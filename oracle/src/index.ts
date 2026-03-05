@@ -1,7 +1,7 @@
 import { config } from "./config/index.js";
 import { startFetcher } from "./services/fetcher.js";
 import { pushPrices } from "./services/chainPusher.js";
-import { storePriceTicks, getCandles, getCandlesAsync, getLatestPrice } from "./services/priceStore.js";
+import { storePriceTicks, getCandlesAsync, getLatestPrice } from "./services/priceStore.js";
 import { detectMarketStateChanges } from "./services/marketStateDetector.js";
 import { initDatabase } from "./services/database.js";
 import {
@@ -9,8 +9,8 @@ import {
   broadcastPrices,
   broadcastMarketState,
 } from "./services/websocketServer.js";
-import { startMainKeeper } from "./keepers/mainKeeper.js";
-import { handleMarketOpen } from "./keepers/marketOpenKeeper.js";
+import { replayHistoricalPositions, startWatching } from "./keepers/positionTracker.js";
+import { handleMarketOpenSettlement } from "./keepers/p2pSettlementKeeper.js";
 import { logger } from "./utils/logger.js";
 import express from "express";
 import cors from "cors";
@@ -77,6 +77,16 @@ async function main() {
     logger.info("API", `REST API listening on port ${config.apiPort}`);
   });
 
+  // Initialize position tracker (replay historical events, then watch live)
+  if (config.tradingAddress) {
+    try {
+      await replayHistoricalPositions();
+      startWatching();
+    } catch (err) {
+      logger.warn("Main", `Position tracker init failed: ${(err as Error).message}`);
+    }
+  }
+
   // Start price fetcher with processing pipeline
   startFetcher(async (ticks: PriceTick[]) => {
     // 1. Store in memory/DB
@@ -90,18 +100,15 @@ async function main() {
     if (stateChanges.length > 0) {
       broadcastMarketState(stateChanges);
 
-      // Handle market opens (settlement)
-      await handleMarketOpen(stateChanges);
+      // Handle market opens (P2P settlement with coordinator lock)
+      await handleMarketOpenSettlement(stateChanges);
     }
 
-    // 4. Push to chain (if configured)
+    // 4. Push to chain + post-push hooks (fee accrual + liquidation in same tick)
     if (config.oracleAddress) {
       await pushPrices(ticks);
     }
   });
-
-  // Start main keeper (liquidations)
-  startMainKeeper();
 
   logger.info("Main", "Oracle service running. Press Ctrl+C to stop.");
 }

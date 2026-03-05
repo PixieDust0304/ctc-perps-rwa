@@ -1,6 +1,28 @@
 import dotenv from "dotenv";
 dotenv.config();
 
+function parseCustodyAddresses(): Record<number, string> {
+  // Support CUSTODY_2056=0x..., CUSTODY_2069=0x..., etc.
+  // Also support CUSTODY_ADDRESSES as JSON: {"2056":"0x...","2069":"0x..."}
+  const jsonStr = process.env.CUSTODY_ADDRESSES;
+  if (jsonStr) {
+    try {
+      const parsed = JSON.parse(jsonStr);
+      const result: Record<number, string> = {};
+      for (const [k, v] of Object.entries(parsed)) {
+        result[Number(k)] = v as string;
+      }
+      return result;
+    } catch {}
+  }
+  const result: Record<number, string> = {};
+  for (const feedId of [2056, 2069, 2015, 2062]) {
+    const addr = process.env[`CUSTODY_${feedId}`];
+    if (addr) result[feedId] = addr;
+  }
+  return result;
+}
+
 export const config = {
   // Autonom Oracle
   autonomUrl: process.env.AUTONOM_URL || "http://178.128.21.71:3000",
@@ -25,6 +47,11 @@ export const config = {
   p2pTradingAddress: process.env.P2P_TRADING_ADDRESS || "",
   marketStateAddress: process.env.MARKET_STATE_ADDRESS || "",
   vammAddress: process.env.VAMM_ADDRESS || "",
+  poolAddress: process.env.POOL_ADDRESS || "",
+  feeManagerAddress: process.env.FEE_MANAGER_ADDRESS || "",
+
+  // Custody addresses per feed (populated after deploy)
+  custodyAddresses: parseCustodyAddresses(),
 
   // Signer
   signerPrivateKey: process.env.SIGNER_PRIVATE_KEY || "",

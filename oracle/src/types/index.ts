@@ -49,3 +49,22 @@ export interface CandleData {
   volume: string;
   timestamp: number;
 }
+
+export interface Position {
+  id: `0x${string}`;
+  owner: `0x${string}`;
+  feedId: number;
+  isLong: boolean;
+  collateral: bigint;
+  sizeUsd: bigint;
+  entryPrice: bigint;
+  openTimestamp: bigint;
+  cumulativeBaseFeeSnapshot: bigint;
+  cumulativeFundingSnapshot: bigint;
+}
+
+export interface CustodyState {
+  cumulativeLongBaseFeePerUnit: bigint;
+  cumulativeShortBaseFeePerUnit: bigint;
+  cumulativeFundingPerUnit: bigint;
+}

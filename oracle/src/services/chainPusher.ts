@@ -2,31 +2,16 @@ import {
   createPublicClient,
   http,
   type Hex,
-  getContract,
 } from "viem";
 import { config } from "../config/index.js";
 import { creditcoinLocal } from "../config/chains.js";
+import { OracleABI } from "../abi/index.js";
 import { getWalletClient, signPriceBatch } from "../utils/signing.js";
 import { logger } from "../utils/logger.js";
 import { retry } from "../utils/retry.js";
+import { maybeTriggerAccrual } from "../keepers/feeAccrualKeeper.js";
+import { checkAndLiquidateAll } from "../keepers/liquidationEngine.js";
 import type { PriceTick } from "../types/index.js";
-
-// Minimal Oracle ABI for updatePrices
-const ORACLE_ABI = [
-  {
-    name: "updatePrices",
-    type: "function",
-    inputs: [
-      { name: "feedIds", type: "uint16[]" },
-      { name: "rawPrices", type: "uint256[]" },
-      { name: "timestamps", type: "uint256[]" },
-      { name: "freshFlags", type: "bool[]" },
-      { name: "signature", type: "bytes" },
-    ],
-    outputs: [],
-    stateMutability: "nonpayable",
-  },
-] as const;
 
 let lastPushedTimestamps: Record<number, number> = {};
 
@@ -62,7 +47,7 @@ export async function pushPrices(ticks: PriceTick[]): Promise<void> {
 
       const { request } = await publicClient.simulateContract({
         address: config.oracleAddress as Hex,
-        abi: ORACLE_ABI,
+        abi: OracleABI,
         functionName: "updatePrices",
         args: [
           feedIds.map((id) => id),
@@ -86,4 +71,17 @@ export async function pushPrices(ticks: PriceTick[]): Promise<void> {
     1000,
     "pushPrices"
   );
+
+  // Post-push hooks: fee accrual + liquidation (same tick)
+  try {
+    await maybeTriggerAccrual();
+  } catch (err) {
+    logger.warn("ChainPusher", `Fee accrual error: ${(err as Error).message}`);
+  }
+
+  try {
+    await checkAndLiquidateAll(filteredTicks);
+  } catch (err) {
+    logger.warn("ChainPusher", `Liquidation check error: ${(err as Error).message}`);
+  }
 }

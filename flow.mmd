@@ -1,0 +1,118 @@
+%%{init: {'theme': 'dark', 'themeVariables': { 'fontSize': '14px', 'fontFamily': 'monospace' }}}%%
+graph TB
+    subgraph EXTERNAL["EXTERNAL"]
+        AUTONOM["Autonom Oracle API<br/>178.128.21.71:3000<br/>Gold · Silver · Copper · Platinum"]
+        USER["User / MetaMask Wallet"]
+    end
+
+    subgraph ORACLE_SERVICE["ORACLE SERVICE · TypeScript · Node.js"]
+        FETCHER["Fetcher<br/>0.5s polling"]
+        PRICESTORE["PriceStore<br/>OHLCV candles"]
+        CHAINPUSHER["ChainPusher<br/>ECDSA sign + submit"]
+        MARKETDETECTOR["MarketStateDetector<br/>fresh flag transitions"]
+        WSSERVER["WebSocket Server<br/>ws://localhost:8080"]
+        RESTAPI["REST API<br/>localhost:3001"]
+
+        subgraph KEEPERS["Keepers"]
+            COORDINATOR["KeeperCoordinator<br/>no overlap"]
+            MAINKEEPER["MainKeeper<br/>liquidations · 0.5s"]
+            MARKETKEEPER["MarketOpenKeeper<br/>P2P settlement"]
+        end
+    end
+
+    subgraph FRONTEND["FRONTEND · Next.js · localhost:3000"]
+        TRADEPAGE["Trade Page<br/>OrderPanel · PositionList"]
+        POOLPAGE["Pool Page<br/>Deposit · Withdraw · Stats"]
+        GOVPAGE["Governance Page<br/>Propose · Vote · Execute"]
+        CHART["TradingView Charts<br/>Lightweight Charts v4"]
+    end
+
+    subgraph CONTRACTS["SMART CONTRACTS · Solidity · Anvil :8545"]
+        ORACLE_SOL["Oracle.sol<br/>ECDSA verification<br/>10s staleness"]
+        MARKETSTATE["MarketState.sol<br/>per-feed open/close"]
+        TRADING["Trading.sol<br/>open · close · liquidate<br/>base fee + VFR enforcement"]
+        P2PTRADING["P2PTrading.sol<br/>off-hours escrow<br/>VAMM pricing"]
+        VAMM["VAMM.sol<br/>x·y=k virtual AMM<br/>depth multiplier"]
+        FEEMANAGER["FeeManager.sol<br/>open/close fee calc<br/>LP/protocol split"]
+        POOL["Pool.sol<br/>LP accounting<br/>CLP mint/burn"]
+        GOVERNANCE["Governance.sol<br/>CPERP voting<br/>48h · 20% quorum"]
+
+        subgraph CUSTODIES["Custodies · All USDC Lives Here"]
+            CUSTODY_GOLD["Gold Custody<br/>feed 2056"]
+            CUSTODY_SILVER["Silver Custody<br/>feed 2069"]
+            CUSTODY_COPPER["Copper Custody<br/>feed 2015"]
+            CUSTODY_PLAT["Platinum Custody<br/>feed 2062"]
+        end
+
+        subgraph TOKENS["Tokens"]
+            USDC["MockUSDC<br/>18 decimals"]
+            CLP["CLP<br/>LP receipt"]
+            CPERP["CPERP<br/>governance"]
+        end
+    end
+
+    %% Price Flow
+    AUTONOM -->|"HTTP batch poll<br/>every 0.5s"| FETCHER
+    FETCHER --> PRICESTORE
+    FETCHER --> CHAINPUSHER
+    FETCHER --> MARKETDETECTOR
+    PRICESTORE --> WSSERVER
+    PRICESTORE --> RESTAPI
+    CHAINPUSHER -->|"signed tx"| ORACLE_SOL
+    MARKETDETECTOR -->|"updateState"| MARKETSTATE
+    MARKETDETECTOR -->|"init/deactivate"| VAMM
+
+    %% Keeper Flow
+    COORDINATOR --> MAINKEEPER
+    COORDINATOR --> MARKETKEEPER
+    MAINKEEPER -->|"liquidate()"| TRADING
+    MARKETKEEPER -->|"settleP2PBatch()"| P2PTRADING
+
+    %% Frontend Flow
+    WSSERVER -->|"real-time ticks"| CHART
+    RESTAPI -->|"OHLCV candles"| CHART
+    USER --> TRADEPAGE
+    USER --> POOLPAGE
+    USER --> GOVPAGE
+    TRADEPAGE -->|"openPosition / closePosition"| TRADING
+    TRADEPAGE -->|"openP2PPosition / closeP2PPosition"| P2PTRADING
+    POOLPAGE -->|"deposit / withdraw"| POOL
+    GOVPAGE -->|"propose / vote / execute"| GOVERNANCE
+
+    %% Contract Dependencies
+    TRADING -->|"getPriceIfFresh"| ORACLE_SOL
+    TRADING -->|"isMarketOpen"| MARKETSTATE
+    TRADING -->|"calculateFee"| FEEMANAGER
+    TRADING -->|"increase/decrease/pay"| CUSTODY_GOLD
+    TRADING -->|"receiveFees / absorbPnL"| POOL
+
+    P2PTRADING -->|"swap / reverseSwap"| VAMM
+    P2PTRADING -->|"isMarketOpen"| MARKETSTATE
+    P2PTRADING -->|"calculateFee"| FEEMANAGER
+    P2PTRADING -->|"receiveFees"| POOL
+
+    POOL -->|"addLiquidity /<br/>removeLiquidity"| CUSTODY_GOLD
+    POOL -->|"addLiquidity /<br/>removeLiquidity"| CUSTODY_SILVER
+    POOL -->|"addLiquidity /<br/>removeLiquidity"| CUSTODY_COPPER
+    POOL -->|"addLiquidity /<br/>removeLiquidity"| CUSTODY_PLAT
+    POOL -->|"mint / burn"| CLP
+
+    GOVERNANCE -->|"execute(target, callData)"| TRADING
+    GOVERNANCE -->|"execute(target, callData)"| POOL
+
+    %% Styling
+    classDef external fill:#4a1942,stroke:#e91e63,stroke-width:2px,color:#fff
+    classDef oracle fill:#1a237e,stroke:#42a5f5,stroke-width:2px,color:#fff
+    classDef frontend fill:#004d40,stroke:#26a69a,stroke-width:2px,color:#fff
+    classDef contract fill:#b71c1c,stroke:#ef5350,stroke-width:1px,color:#fff
+    classDef custody fill:#e65100,stroke:#ff9800,stroke-width:2px,color:#fff
+    classDef token fill:#1b5e20,stroke:#66bb6a,stroke-width:1px,color:#fff
+    classDef keeper fill:#311b92,stroke:#7c4dff,stroke-width:1px,color:#fff
+
+    class AUTONOM,USER external
+    class FETCHER,PRICESTORE,CHAINPUSHER,MARKETDETECTOR,WSSERVER,RESTAPI oracle
+    class COORDINATOR,MAINKEEPER,MARKETKEEPER keeper
+    class TRADEPAGE,POOLPAGE,GOVPAGE,CHART frontend
+    class ORACLE_SOL,MARKETSTATE,TRADING,P2PTRADING,VAMM,FEEMANAGER,POOL,GOVERNANCE contract
+    class CUSTODY_GOLD,CUSTODY_SILVER,CUSTODY_COPPER,CUSTODY_PLAT custody
+    class USDC,CLP,CPERP token
