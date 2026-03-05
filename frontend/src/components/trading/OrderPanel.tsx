@@ -1,0 +1,160 @@
+"use client";
+
+import { useState } from "react";
+import { useAccount, useWriteContract } from "wagmi";
+import { parseEther, type Address } from "viem";
+import { CONTRACTS, TRADING_ABI, ERC20_ABI } from "../../lib/contracts";
+
+interface OrderPanelProps {
+  feedId: number;
+  currentPrice: number;
+  isMarketOpen: boolean;
+}
+
+export function OrderPanel({
+  feedId,
+  currentPrice,
+  isMarketOpen,
+}: OrderPanelProps) {
+  const { address, isConnected } = useAccount();
+  const { writeContract, isPending } = useWriteContract();
+
+  const [isLong, setIsLong] = useState(true);
+  const [collateral, setCollateral] = useState("");
+  const [leverage, setLeverage] = useState("10");
+
+  const collateralNum = parseFloat(collateral) || 0;
+  const leverageNum = parseFloat(leverage) || 1;
+  const notional = collateralNum * leverageNum;
+  const openFee = notional * 0.001; // 0.1%
+  const feePercent = leverageNum * 0.1; // fee as % of collateral
+
+  const handleApproveAndOpen = async () => {
+    if (!address || !CONTRACTS.trading || collateralNum <= 0) return;
+
+    const collateralWei = parseEther(collateral);
+    const leverageWei = parseEther(leverage);
+
+    // Step 1: Approve
+    writeContract({
+      address: CONTRACTS.mockUSDC as Address,
+      abi: ERC20_ABI,
+      functionName: "approve",
+      args: [CONTRACTS.trading as Address, collateralWei],
+    });
+
+    // Step 2: Open position (after approval)
+    writeContract({
+      address: CONTRACTS.trading as Address,
+      abi: TRADING_ABI,
+      functionName: "openPosition",
+      args: [feedId, isLong, collateralWei, leverageWei],
+    });
+  };
+
+  return (
+    <div className="space-y-4">
+      <h3 className="text-lg font-semibold text-white">
+        {isMarketOpen ? "Open Position" : "Open P2P Position"}
+      </h3>
+
+      {/* Long/Short Toggle */}
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          onClick={() => setIsLong(true)}
+          className={`py-2 rounded-lg font-medium transition-colors ${
+            isLong
+              ? "bg-green-600 text-white"
+              : "bg-gray-800 text-gray-400 hover:bg-gray-700"
+          }`}
+        >
+          Long
+        </button>
+        <button
+          onClick={() => setIsLong(false)}
+          className={`py-2 rounded-lg font-medium transition-colors ${
+            !isLong
+              ? "bg-red-600 text-white"
+              : "bg-gray-800 text-gray-400 hover:bg-gray-700"
+          }`}
+        >
+          Short
+        </button>
+      </div>
+
+      {/* Collateral Input */}
+      <div>
+        <label className="block text-sm text-gray-400 mb-1">
+          Collateral (USDC)
+        </label>
+        <input
+          type="number"
+          value={collateral}
+          onChange={(e) => setCollateral(e.target.value)}
+          placeholder="1000"
+          className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white"
+        />
+      </div>
+
+      {/* Leverage Slider */}
+      <div>
+        <label className="block text-sm text-gray-400 mb-1">
+          Leverage: {leverage}x
+        </label>
+        <input
+          type="range"
+          min="1"
+          max="100"
+          value={leverage}
+          onChange={(e) => setLeverage(e.target.value)}
+          className="w-full"
+        />
+        <div className="flex justify-between text-xs text-gray-500">
+          <span>1x</span>
+          <span>25x</span>
+          <span>50x</span>
+          <span>100x</span>
+        </div>
+      </div>
+
+      {/* Order Summary */}
+      <div className="bg-gray-800 rounded-lg p-3 space-y-1 text-sm">
+        <div className="flex justify-between">
+          <span className="text-gray-400">Notional</span>
+          <span className="text-white">${notional.toFixed(2)}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-gray-400">Entry Price</span>
+          <span className="text-white">${currentPrice.toFixed(2)}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-gray-400">Open Fee (0.1%)</span>
+          <span className="text-white">${openFee.toFixed(2)}</span>
+        </div>
+        {feePercent >= 5 && (
+          <div className="text-amber-400 text-xs mt-1">
+            Warning: Open+close fees = {(feePercent * 2).toFixed(1)}% of
+            collateral at {leverage}x leverage
+          </div>
+        )}
+      </div>
+
+      {/* Submit Button */}
+      <button
+        onClick={handleApproveAndOpen}
+        disabled={!isConnected || isPending || collateralNum <= 0}
+        className={`w-full py-3 rounded-lg font-medium text-white transition-colors ${
+          isLong
+            ? "bg-green-600 hover:bg-green-700 disabled:bg-green-900"
+            : "bg-red-600 hover:bg-red-700 disabled:bg-red-900"
+        } disabled:opacity-50 disabled:cursor-not-allowed`}
+      >
+        {!isConnected
+          ? "Connect Wallet"
+          : isPending
+            ? "Confirming..."
+            : `${isLong ? "Long" : "Short"} ${notional.toFixed(0)} USD`}
+      </button>
+    </div>
+  );
+}

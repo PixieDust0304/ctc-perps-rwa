@@ -1,14 +1,30 @@
-# Compiler files
+# ---- Foundry / Solidity ----
 cache/
 out/
-
-# Ignores development broadcast logs
 !/broadcast
 /broadcast/*/31337/
 /broadcast/**/dry-run/
-
-# Docs
 docs/
 
-# Dotenv file
+# ---- Node / Frontend / Oracle ----
+node_modules/
+.next/
+*.tsbuildinfo
+dist/
+
+# ---- Environment & secrets ----
 .env
+.env.*
+!.env.example
+
+# ---- OS / IDE ----
+.DS_Store
+.vscode/
+.idea/
+
+# ---- Prisma ----
+oracle/prisma/*.db
+oracle/prisma/*.db-journal
+
+# ---- Misc ----
+*.log

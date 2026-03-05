@@ -1,0 +1,52 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model PriceTick {
+  id        BigInt   @id @default(autoincrement())
+  feedId    Int
+  price     Decimal  @db.Decimal(38, 18)
+  fresh     Boolean
+  timestamp DateTime
+
+  @@index([feedId, timestamp])
+}
+
+model Candle {
+  id        BigInt   @id @default(autoincrement())
+  feedId    Int
+  interval  String
+  open      Decimal  @db.Decimal(38, 18)
+  high      Decimal  @db.Decimal(38, 18)
+  low       Decimal  @db.Decimal(38, 18)
+  close     Decimal  @db.Decimal(38, 18)
+  volume    Decimal  @db.Decimal(38, 18) @default(0)
+  timestamp DateTime
+
+  @@unique([feedId, interval, timestamp])
+}
+
+model MarketStateLog {
+  id        BigInt   @id @default(autoincrement())
+  feedId    Int
+  state     String
+  price     Decimal? @db.Decimal(38, 18)
+  timestamp DateTime
+}
+
+model KeeperEvent {
+  id           BigInt   @id @default(autoincrement())
+  keeperType   String
+  feedId       Int
+  action       String
+  positionId   String
+  txHash       String?
+  status       String
+  errorMessage String?
+  createdAt    DateTime @default(now())
+}

@@ -1,88 +1,143 @@
 # CTC-Perps: Build Status
 
-## Current Phase: PLANNING (Complete)
+## Current Phase: Security Hardened (v1)
 
 ## Progress Tracker
 
-### Phase 1: Foundation
-- [ ] Restructure repo into monorepo (contracts/, oracle/, frontend/, database/)
-- [ ] Move Foundry files under contracts/
-- [ ] Install OpenZeppelin upgradeable contracts
-- [ ] FixedPointMath.sol library
-- [ ] PriceUtils.sol library
-- [ ] MockUSDC.sol
-- [ ] CLP.sol (UUPS)
-- [ ] CPERP.sol
-- [ ] Oracle.sol (UUPS, ECDSA verification, staleness, fresh flag)
-- [ ] Unit tests for Phase 1
+### Phase 1: Foundation ✅
+- [x] Restructure repo into monorepo (contracts/, oracle/, frontend/, database/)
+- [x] Move Foundry files under contracts/
+- [x] Install OpenZeppelin upgradeable contracts
+- [x] FixedPointMath.sol library
+- [x] PriceUtils.sol library
+- [x] MockUSDC.sol
+- [x] CLP.sol (UUPS)
+- [x] CPERP.sol
+- [x] Oracle.sol (UUPS, ECDSA verification, staleness, fresh flag)
+- [x] Unit tests for Phase 1 (34 tests)
 
-### Phase 2: Pool & Custody
-- [ ] Pool.sol (deposit/withdraw, CLP mint/burn)
-- [ ] WaterfallWithdraw.sol library
-- [ ] Custody.sol (per-commodity, 4 instances)
-- [ ] FeeManager.sol (cumulative accumulators)
-- [ ] MarketState.sol (per-feed state machine)
-- [ ] Wire Pool -> Custodies
-- [ ] Unit tests for Phase 2
-- [ ] Integration test: deposit -> fees -> withdraw
+### Phase 2: Pool & Custody ✅
+- [x] Pool.sol (deposit/withdraw, CLP mint/burn)
+- [x] WaterfallWithdraw.sol library
+- [x] Custody.sol (per-commodity, 4 instances)
+- [x] FeeManager.sol (cumulative accumulators)
+- [x] MarketState.sol (per-feed state machine)
+- [x] Wire Pool -> Custodies
+- [x] Unit tests for Phase 2 (15 tests)
 
-### Phase 3: Market-Hours Trading
-- [ ] Trading.sol (open, close, liquidate)
-- [ ] Wire Trading -> Custody, Oracle, FeeManager
-- [ ] PnL calculation with caps
-- [ ] Liquidation at 30% maintenance margin
-- [ ] 120s min position open time
-- [ ] Unit tests for Phase 3
-- [ ] Integration test: multi-trader scenarios
+### Phase 3: Market-Hours Trading ✅
+- [x] Trading.sol (open, close, liquidate)
+- [x] Wire Trading -> Custody, Oracle, FeeManager
+- [x] PnL calculation with caps
+- [x] Liquidation at 30% maintenance margin
+- [x] 120s min position open time
+- [x] Integration test: multi-trader scenarios (10 tests)
 
-### Phase 4: Off-Hours P2P
-- [ ] VAMM.sol (x*y=k, multiplier, init/deactivate)
-- [ ] P2PTrading.sol (open, close, settle)
-- [ ] P2P escrow pools (separate from main)
-- [ ] P2P base fee -> main pool
-- [ ] P2P funding rate between traders
-- [ ] settleP2PBatch for market open
-- [ ] Wire MarketState -> VAMM
-- [ ] Unit tests for Phase 4
-- [ ] Integration test: full off-hours cycle
+### Phase 4: Off-Hours P2P ✅
+- [x] VAMM.sol (x*y=k, multiplier, init/deactivate)
+- [x] P2PTrading.sol (open, close, settle)
+- [x] P2P escrow pools (separate from main)
+- [x] P2P base fee -> main pool (forwarded to custodies)
+- [x] settleP2PBatch for market open
+- [x] Wire MarketState -> VAMM
+- [x] Integration test: full off-hours cycle (7 tests)
 
-### Phase 5: Governance
-- [ ] Governance.sol (propose, vote, execute)
-- [ ] Wire to all admin functions
-- [ ] Unit tests for Phase 5
+### Phase 5: Governance ✅
+- [x] Governance.sol (propose, vote, execute)
+- [x] Wire to all admin functions
+- [x] Unit tests for Phase 5 (7 tests)
 
-### Phase 6: Oracle Service
-- [ ] Initialize TypeScript project
-- [ ] PostgreSQL schema (Prisma)
-- [ ] Fetcher (Autonom 0.5s polling)
-- [ ] PriceStore (OHLCV aggregation)
-- [ ] ChainPusher (ECDSA sign + submit)
-- [ ] MarketStateDetector (fresh flag)
-- [ ] WebSocket server
-- [ ] MainKeeper (liquidation every 0.5s)
-- [ ] MarketOpenKeeper (batch settlement)
-- [ ] KeeperCoordinator (no overlap)
-- [ ] REST API for candles
-- [ ] Tests
+### Phase 6: Oracle Service ✅
+- [x] Initialize TypeScript project
+- [x] PostgreSQL schema (Prisma v5)
+- [x] Database service layer (auto-fallback to in-memory if no DB)
+- [x] Fetcher (Autonom 0.5s polling)
+- [x] PriceStore (OHLCV aggregation, in-memory + Prisma persistence)
+- [x] ChainPusher (ECDSA sign + submit)
+- [x] MarketStateDetector (fresh flag)
+- [x] WebSocket server
+- [x] MainKeeper (liquidation every 0.5s)
+- [x] MarketOpenKeeper (batch settlement)
+- [x] KeeperCoordinator (no overlap)
+- [x] REST API for candles (path-param and query-param styles)
+- [x] .env.example
 
-### Phase 7: Frontend
-- [ ] Initialize Next.js + Tailwind + wagmi + viem + RainbowKit
-- [ ] CreditCoin chain config (defineChain)
-- [ ] TradingView Lightweight Charts
-- [ ] WebSocket hook for real-time prices
-- [ ] Trading panel + order form
-- [ ] Position management
-- [ ] LP interface (deposit/withdraw/stats)
-- [ ] Market status UI + P2P warnings
-- [ ] Governance interface
-- [ ] Tests
+### Phase 7: Frontend ✅
+- [x] Initialize Next.js + Tailwind + wagmi + viem + RainbowKit
+- [x] CreditCoin chain config (defineChain)
+- [x] WebSocket hook for real-time prices
+- [x] Trading panel + order form (OrderPanel)
+- [x] Market status UI + P2P warnings (MarketStatusBanner)
+- [x] Market selector with live prices
+- [x] TradingView Lightweight Charts v4 (PriceChart component)
+- [x] Position management (PositionList with live PnL)
+- [x] LP interface — Pool page (deposit/withdraw/stats)
+- [x] Governance interface — vote, execute proposals
+- [x] Navigation between Trade/Pool/Govern pages
 
-### Phase 8: Integration & Deployment
-- [ ] DeployLocal.s.sol script
-- [ ] Startup script (Anvil + deploy + PG + oracle + frontend)
-- [ ] E2E testing
-- [ ] Gas optimization
-- [ ] Documentation
+### Phase 8: Integration & Deployment ✅
+- [x] DeployLocal.s.sol script
+- [x] Startup script (start.sh — Anvil + deploy + oracle + frontend)
+- [x] Oracle .env.example
+- [x] .addresses.json output from deploy
+- [x] Invariant tests (Pool + Trading + P2P, 11 tests)
+- [x] via_ir enabled for complex deploy scripts
+
+### Phase 9: Security Hardening ✅
+- [x] Critical bug fix: Fee dust in custody (fee USDC untracked in availableBalance)
+- [x] Critical bug fix: PnL not reported to pool (pool.absorbPnL for trader wins/losses)
+- [x] Critical bug fix: P2P escrow over-withdrawal (profit capped at other traders' collateral)
+- [x] Architecture fix: P2P fees forwarded from pool to custodies (all USDC lives in custodies)
+- [x] FullLifecycleTest — 5 tests: LP deposit → trade → fees → close → LP withdraw
+- [x] MarketTransitionTest — 3 tests: market hours → close → P2P → settle
+- [x] CustodyDrainTest — 3 tests: payout caps, custody drain, multi-position accounting
+- [x] P2PInvariantTest — 3 tests: escrow backed by USDC, USDC conservation, OI bounds
+- [x] Slither static analysis — 0 critical findings (59 total, all low/informational)
+
+## Test Summary
+
+**108 Solidity tests passing** across 16 test suites:
+- `FixedPointMathTest` (8 tests, incl. fuzz)
+- `PriceUtilsTest` (5 tests)
+- `FeeCalculatorTest` (9 tests)
+- `TokensTest` (8 tests)
+- `OracleTest` (13 tests)
+- `PoolCustodyTest` (15 tests)
+- `GovernanceTest` (7 tests)
+- `TradingTest` (10 integration tests)
+- `P2PTradingTest` (7 integration tests)
+- `FullLifecycleTest` (5 integration tests)
+- `MarketTransitionTest` (3 integration tests)
+- `CustodyDrainTest` (3 integration tests)
+- `P2PEscrowDrainTest` (4 integration tests)
+- `PoolInvariantTest` (4 invariant tests)
+- `TradingInvariantTest` (4 invariant tests)
+- `P2PInvariantTest` (3 invariant tests)
+
+**18 Oracle TypeScript tests passing** across 3 test files:
+- `fetcher.test.ts` (4 tests)
+- `priceStore.test.ts` (7 tests)
+- `marketStateDetector.test.ts` (7 tests)
+
+## Critical Bugs Found & Fixed
+
+| Bug | Impact | Fix |
+|-----|--------|-----|
+| Fee dust in custody | Open fee USDC sent to custody but not tracked in availableBalance — LP withdrawals eventually fail | `custody.receiveFees(openFee)` in Trading.openPosition |
+| PnL not reported to pool | pool.totalPoolUSDC didn't change on trader wins/losses — LP share price stale | `pool.absorbPnL(pnlImpact)` in Trading._closePosition |
+| P2P escrow over-withdrawal | Profitable trader could withdraw own collateral + entire escrow (including own money) | Cap profit at `escrow - pos.collateral` (other traders' money only) |
+| P2P escrow tracker desync | Profitable close only reduced escrow by collateral (not collateral+profit) — escrow > actual USDC — subsequent closers revert | Decrease escrow by `collateral + cappedPnl`; cap payout at contract USDC balance |
+| P2P fees stuck in pool contract | P2P fees sent to pool but not forwarded to custodies — waterfall can't find USDC | pool.receiveFees distributes P2P fees to custodies |
+| settleP2PBatch missing nonReentrant | Batch settlement lacked reentrancy guard — defense in depth gap | Added nonReentrant modifier |
+
+## Slither Findings Summary
+
+| Severity | Count | Details |
+|----------|-------|---------|
+| High | 0 | — |
+| Medium | 1 | abi.encodePacked collision (Oracle) — mitigated by ECDSA signature |
+| Low | 4 | Reentrancy (all have nonReentrant), divide-before-multiply (intentional) |
+| Informational | 54 | Missing events, zero-checks, timestamp usage, loop calls |
 
 ## Decision Log
 
@@ -92,18 +147,37 @@
 | 2026-03-05 | UUPS proxy pattern | Lower gas, simpler than Transparent Proxy |
 | 2026-03-05 | Separate P2PTrading from Trading | Different pricing models, escrow, settlement |
 | 2026-03-05 | Cumulative fee accumulators | O(1) per position, GMX-proven pattern |
-| 2026-03-05 | Prisma ORM | Mature, auto-generated TS types |
-| 2026-03-05 | TradingView Lightweight Charts | Apache 2.0, 45KB, custom data feed support |
+| 2026-03-05 | Prisma v5 ORM | Stable, auto-generated TS types (v7 had breaking changes) |
+| 2026-03-05 | TradingView Lightweight Charts v4 | Stable addCandlestickSeries API, v5 broke compat |
 | 2026-03-05 | wagmi + viem + RainbowKit | Standard EVM stack, custom chain support confirmed |
 | 2026-03-05 | Platinum instead of Oil | Oil feed ID not found; Platinum (2062) confirmed live |
+| 2026-03-05 | via_ir = true | Required for DeployLocal.s.sol stack depth |
+| 2026-03-05 | All USDC in custodies | Pool is accounting only. Fees, PnL, deposits all flow to custodies. |
 
 ## Blockers
 
-None currently.
+None.
 
-## Notes
+## Future Work (v2)
 
-- All tokens are MOCK for v1 (localnet only)
-- When moving to CTC devnet: replace MockUSDC with bridged USDC, update chain config
-- Protocol fee currently redirects to custody address (not team wallet)
-- ADL (Auto-Deleveraging) deferred to v2
+- ADL (Auto-Deleveraging) for extreme scenarios
+- E2E tests (Playwright) for frontend
+- Gas optimization pass (forge snapshot)
+- CreditCoin devnet deployment
+- Replace MockUSDC with bridged USDC
+- Team wallet for protocol fee split
+- ~~Oracle service Vitest tests~~ ✅ 18 tests (fetcher, priceStore, marketStateDetector)
+- ~~Proposal creation in governance UI~~ ✅ Preset actions + custom calldata
+- Frontend tests
+
+## Quick Start
+
+```bash
+./start.sh
+```
+
+Starts Anvil, deploys all contracts, launches oracle service and frontend.
+- Frontend: http://localhost:3000
+- Oracle WS: ws://localhost:8080
+- Oracle API: http://localhost:3001
+- Anvil RPC: http://127.0.0.1:8545
