@@ -18,7 +18,7 @@ interface PositionData {
 const FEED_NAMES: Record<number, string> = {
   2056: "Gold",
   2069: "Silver",
-  2015: "Copper",
+  2003: "Crude Oil",
   2062: "Platinum",
 };
 
@@ -124,6 +124,24 @@ export function PositionList({
     return { pnlPercent, pnlUsd };
   };
 
+  // Liquidation price: price at which effective collateral drops to 30% of initial
+  // Simplified formula (ignores fees/funding which accrue over time):
+  //   For LONG:  liqPrice = entryPrice * (1 - (1 - maintenanceMargin) / leverage)
+  //   For SHORT: liqPrice = entryPrice * (1 + (1 - maintenanceMargin) / leverage)
+  const MAINTENANCE_MARGIN = 0.3; // 30% = 3000 bps
+
+  const getLiquidationPrice = (pos: PositionData) => {
+    const entry = Number(pos.entryPrice) / 1e18;
+    const leverage = Number(pos.sizeUsd) / Number(pos.collateral);
+    const moveToLiq = (1 - MAINTENANCE_MARGIN) / leverage;
+
+    if (pos.isLong) {
+      return entry * (1 - moveToLiq);
+    } else {
+      return entry * (1 + moveToLiq);
+    }
+  };
+
   if (!address) return null;
 
   return (
@@ -181,6 +199,9 @@ export function PositionList({
                     <span>
                       Collateral: $
                       {(Number(pos.collateral) / 1e18).toFixed(2)}
+                    </span>
+                    <span className="text-orange-400">
+                      Liq: ${getLiquidationPrice(pos).toFixed(2)}
                     </span>
                   </div>
                 </div>

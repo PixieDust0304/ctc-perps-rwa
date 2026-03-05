@@ -29,12 +29,13 @@ export async function signPriceBatch(
   const account = getSignerAccount();
 
   // Replicate the Solidity: keccak256(abi.encodePacked(feedIds, prices, timestamps, freshFlags))
+  // Solidity's abi.encodePacked with array types pads each element to 32 bytes (ABI encoding per element)
   const types: string[] = [];
-  const values: (number | bigint | boolean)[] = [];
+  const values: bigint[] = [];
 
   for (const id of feedIds) {
-    types.push("uint16");
-    values.push(id);
+    types.push("uint256");
+    values.push(BigInt(id));
   }
   for (const p of prices) {
     types.push("uint256");
@@ -45,13 +46,13 @@ export async function signPriceBatch(
     values.push(t);
   }
   for (const f of freshFlags) {
-    types.push("bool");
-    values.push(f);
+    types.push("uint256");
+    values.push(f ? 1n : 0n);
   }
 
   const encoded = encodePacked(
     types as readonly string[],
-    values as readonly (number | bigint | boolean)[]
+    values as readonly bigint[]
   );
   const messageHash = keccak256(encoded);
 

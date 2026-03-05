@@ -1,7 +1,7 @@
 import { config } from "./config/index.js";
 import { startFetcher } from "./services/fetcher.js";
 import { pushPrices } from "./services/chainPusher.js";
-import { storePriceTicks, getCandlesAsync, getLatestPrice } from "./services/priceStore.js";
+import { storePriceTicks, getCandlesAsync, getLatestPrice, getPriceMovement } from "./services/priceStore.js";
 import { detectMarketStateChanges } from "./services/marketStateDetector.js";
 import { initDatabase } from "./services/database.js";
 import {
@@ -66,6 +66,17 @@ async function main() {
       });
     } else {
       res.status(404).json({ error: "No price data" });
+    }
+  });
+
+  app.get("/api/movement/:feedId", (req, res) => {
+    const feedId = parseInt(req.params.feedId);
+    const lookback = parseInt((req.query.lookback as string) || "60000");
+    const result = getPriceMovement(feedId, lookback);
+    if (result) {
+      res.json(result);
+    } else {
+      res.status(404).json({ error: "No data for this timeframe" });
     }
   });
 

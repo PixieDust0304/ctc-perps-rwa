@@ -99,10 +99,10 @@ describe("priceStore", () => {
       const baseTime = 1700000120000;
       // Create ticks across different minute buckets
       for (let i = 0; i < 5; i++) {
-        storePriceTicks([makeTick(2015, 4_500000000000000000n, baseTime + i * 60000)]);
+        storePriceTicks([makeTick(2003, 4_500000000000000000n, baseTime + i * 60000)]);
       }
 
-      const limited = getCandlesSync(2015, "1m", 2);
+      const limited = getCandlesSync(2003, "1m", 2);
       expect(limited.length).toBeLessThanOrEqual(2);
     });
   });

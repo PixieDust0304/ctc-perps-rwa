@@ -1,0 +1,243 @@
+{
+  "schema_version": "v2.0",
+  "generated_at": "2025-09-12T02:32:14.058041Z",
+  "products": {
+    "equities": {},
+    "commodities": {},
+    "crypto": {
+      "BTC": {
+        "feed_id": 3001,
+        "symbol": "BTC",
+        "name": "Bitcoin",
+        "currency": "USD",
+        "expo": -10,
+        "unit": "USD",
+        "asset_class": "Crypto",
+        "exchange_policy": "spot",
+        "active": true
+      },
+      "ETH": {
+        "feed_id": 3002,
+        "symbol": "ETH",
+        "name": "Ethereum",
+        "currency": "USD",
+        "expo": -10,
+        "unit": "USD",
+        "asset_class": "Crypto",
+        "exchange_policy": "spot",
+        "active": true
+      },
+      "XRP": {
+        "feed_id": 3003,
+        "symbol": "XRP",
+        "name": "XRP",
+        "currency": "USD",
+        "expo": -10,
+        "unit": "USD",
+        "asset_class": "Crypto",
+        "exchange_policy": "spot",
+        "active": true
+      },
+      "BNB": {
+        "feed_id": 3004,
+        "symbol": "BNB",
+        "name": "BNB",
+        "currency": "USD",
+        "expo": -10,
+        "unit": "USD",
+        "asset_class": "Crypto",
+        "exchange_policy": "spot",
+        "active": true
+      },
+      "SOL": {
+        "feed_id": 3005,
+        "symbol": "SOL",
+        "name": "Solana",
+        "currency": "USD",
+        "expo": -10,
+        "unit": "USD",
+        "asset_class": "Crypto",
+        "exchange_policy": "spot",
+        "active": true
+      },
+      "DOGE": {
+        "feed_id": 3006,
+        "symbol": "DOGE",
+        "name": "Dogecoin",
+        "currency": "USD",
+        "expo": -10,
+        "unit": "USD",
+        "asset_class": "Crypto",
+        "exchange_policy": "spot",
+        "active": true
+      },
+      "TRX": {
+        "feed_id": 3007,
+        "symbol": "TRX",
+        "name": "TRON",
+        "currency": "USD",
+        "expo": -10,
+        "unit": "USD",
+        "asset_class": "Crypto",
+        "exchange_policy": "spot",
+        "active": true
+      },
+      "ADA": {
+        "feed_id": 3008,
+        "symbol": "ADA",
+        "name": "Cardano",
+        "currency": "USD",
+        "expo": -10,
+        "unit": "USD",
+        "asset_class": "Crypto",
+        "exchange_policy": "spot",
+        "active": true
+      },
+      "HYPE": {
+        "feed_id": 3009,
+        "symbol": "HYPE",
+        "name": "Hyperliquid",
+        "currency": "USD",
+        "expo": -10,
+        "unit": "USD",
+        "asset_class": "Crypto",
+        "exchange_policy": "spot",
+        "active": true
+      },
+      "LINK": {
+        "feed_id": 3010,
+        "symbol": "LINK",
+        "name": "Chainlink",
+        "currency": "USD",
+        "expo": -10,
+        "unit": "USD",
+        "asset_class": "Crypto",
+        "exchange_policy": "spot",
+        "active": true
+      },
+      "SUI": {
+        "feed_id": 3011,
+        "symbol": "SUI",
+        "name": "Sui",
+        "currency": "USD",
+        "expo": -10,
+        "unit": "USD",
+        "asset_class": "Crypto",
+        "exchange_policy": "spot",
+        "active": true
+      },
+      "XLM": {
+        "feed_id": 3012,
+        "symbol": "XLM",
+        "name": "Stellar",
+        "currency": "USD",
+        "expo": -10,
+        "unit": "USD",
+        "asset_class": "Crypto",
+        "exchange_policy": "spot",
+        "active": true
+      },
+      "AVAX": {
+        "feed_id": 3013,
+        "symbol": "AVAX",
+        "name": "Avalanche",
+        "currency": "USD",
+        "expo": -10,
+        "unit": "USD",
+        "asset_class": "Crypto",
+        "exchange_policy": "spot",
+        "active": true
+      },
+      "BCH": {
+        "feed_id": 3014,
+        "symbol": "BCH",
+        "name": "Bitcoin Cash",
+        "currency": "USD",
+        "expo": -10,
+        "unit": "USD",
+        "asset_class": "Crypto",
+        "exchange_policy": "spot",
+        "active": true
+      },
+      "HBAR": {
+        "feed_id": 3015,
+        "symbol": "HBAR",
+        "name": "Hedera",
+        "currency": "USD",
+        "expo": -10,
+        "unit": "USD",
+        "asset_class": "Crypto",
+        "exchange_policy": "spot",
+        "active": true
+      },
+      "BONK": {
+        "feed_id": 3016,
+        "symbol": "BONK",
+        "name": "BONK",
+        "currency": "USD",
+        "expo": -10,
+        "unit": "USD",
+        "asset_class": "Crypto",
+        "exchange_policy": "spot",
+        "active": true
+      },
+      "LTC": {
+        "feed_id": 3017,
+        "symbol": "LTC",
+        "name": "Litecoin",
+        "currency": "USD",
+        "expo": -10,
+        "unit": "USD",
+        "asset_class": "Crypto",
+        "exchange_policy": "spot",
+        "active": true
+      },
+      "CRO": {
+        "feed_id": 3018,
+        "symbol": "CRO",
+        "name": "Cronos",
+        "currency": "USD",
+        "expo": -10,
+        "unit": "USD",
+        "asset_class": "Crypto",
+        "exchange_policy": "spot",
+        "active": true
+      },
+      "TON": {
+        "feed_id": 3019,
+        "symbol": "TON",
+        "name": "Toncoin",
+        "currency": "USD",
+        "expo": -10,
+        "unit": "USD",
+        "asset_class": "Crypto",
+        "exchange_policy": "spot",
+        "active": true
+      },
+      "SHIB": {
+        "feed_id": 3020,
+        "symbol": "SHIB",
+        "name": "Shiba Inu",
+        "currency": "USD",
+        "expo": -10,
+        "unit": "USD",
+        "asset_class": "Crypto",
+        "exchange_policy": "spot",
+        "active": true
+      },
+      "ALP": {
+        "feed_id": 3021,
+        "symbol": "ALP",
+        "name": "Adrena LP Token",
+        "currency": "USD",
+        "expo": -10,
+        "unit": "USD",
+        "asset_class": "Crypto",
+        "exchange_policy": "adrena_alp",
+        "active": true
+      }
+    },
+    "perpetuals": {}
+  },
+  "aliases": {}
+}

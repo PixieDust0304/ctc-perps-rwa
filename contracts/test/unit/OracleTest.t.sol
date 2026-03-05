@@ -10,7 +10,7 @@ contract OracleTest is TestSetup {
         assertEq(oracle.stalenessThreshold(), STALENESS_THRESHOLD);
         assertTrue(oracle.supportedFeeds(GOLD_FEED));
         assertTrue(oracle.supportedFeeds(SILVER_FEED));
-        assertTrue(oracle.supportedFeeds(COPPER_FEED));
+        assertTrue(oracle.supportedFeeds(CRUDE_OIL_FEED));
         assertTrue(oracle.supportedFeeds(PLATINUM_FEED));
     }
 
@@ -30,7 +30,7 @@ contract OracleTest is TestSetup {
         _updateAllPrices(
             30377000000000,  // Gold ~$3037.70
             830000000000,    // Silver ~$83
-            29500000000,     // Copper ~$2.95
+            29500000000,     // CrudeOil ~$2.95 (test value)
             22770000000000,  // Platinum ~$2277
             ts,
             true
@@ -38,7 +38,7 @@ contract OracleTest is TestSetup {
 
         assertEq(oracle.getPrice(GOLD_FEED).price, 3037.7e18);
         assertEq(oracle.getPrice(SILVER_FEED).price, 83e18);
-        assertEq(oracle.getPrice(COPPER_FEED).price, 2.95e18);
+        assertEq(oracle.getPrice(CRUDE_OIL_FEED).price, 2.95e18);
         assertEq(oracle.getPrice(PLATINUM_FEED).price, 2277e18);
     }
 

@@ -29,6 +29,13 @@ export function OrderPanel({
   const openFee = notional * 0.001; // 0.1%
   const feePercent = leverageNum * 0.1; // fee as % of collateral
 
+  // Liq price: price at which effective collateral = 30% of initial (maintenance margin)
+  const liqPrice = currentPrice > 0 && leverageNum > 0
+    ? isLong
+      ? currentPrice * (1 - 0.7 / leverageNum)
+      : currentPrice * (1 + 0.7 / leverageNum)
+    : 0;
+
   const handleApproveAndOpen = async () => {
     if (!address || !CONTRACTS.trading || collateralNum <= 0) return;
 
@@ -109,18 +116,19 @@ export function OrderPanel({
           onChange={(e) => setLeverage(e.target.value)}
           className="w-full"
         />
-        <div className="flex justify-between text-xs text-gray-500">
-          <span>1x</span>
-          <span>25x</span>
-          <span>50x</span>
-          <span>100x</span>
+        <div className="relative text-xs text-gray-500 h-4">
+          <span className="absolute left-0">1x</span>
+          <span className="absolute left-1/4 -translate-x-1/2">25x</span>
+          <span className="absolute left-1/2 -translate-x-1/2">50x</span>
+          <span className="absolute left-3/4 -translate-x-1/2">75x</span>
+          <span className="absolute right-0">100x</span>
         </div>
       </div>
 
       {/* Order Summary */}
       <div className="bg-gray-800 rounded-lg p-3 space-y-1 text-sm">
         <div className="flex justify-between">
-          <span className="text-gray-400">Notional</span>
+          <span className="text-gray-400">Position Size</span>
           <span className="text-white">${notional.toFixed(2)}</span>
         </div>
         <div className="flex justify-between">
@@ -130,6 +138,12 @@ export function OrderPanel({
         <div className="flex justify-between">
           <span className="text-gray-400">Open Fee (0.1%)</span>
           <span className="text-white">${openFee.toFixed(2)}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-gray-400">Liq. Price</span>
+          <span className="text-orange-400 font-mono">
+            {liqPrice > 0 ? `$${liqPrice.toFixed(2)}` : "—"}
+          </span>
         </div>
         {feePercent >= 5 && (
           <div className="text-amber-400 text-xs mt-1">

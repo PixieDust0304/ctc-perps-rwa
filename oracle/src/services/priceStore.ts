@@ -24,8 +24,13 @@ export function storePriceTicks(ticks: PriceTick[]) {
     updateCandle(tick, "15s");
     updateCandle(tick, "1m");
     updateCandle(tick, "5m");
+    updateCandle(tick, "10m");
     updateCandle(tick, "15m");
+    updateCandle(tick, "30m");
     updateCandle(tick, "1h");
+    updateCandle(tick, "6h");
+    updateCandle(tick, "12h");
+    updateCandle(tick, "1d");
   }
 
   // Async persist to DB (fire and forget)
@@ -67,10 +72,63 @@ function intervalToMs(interval: string): number {
     "15s": 15_000,
     "1m": 60_000,
     "5m": 300_000,
+    "10m": 600_000,
     "15m": 900_000,
+    "30m": 1_800_000,
     "1h": 3_600_000,
+    "6h": 21_600_000,
+    "12h": 43_200_000,
+    "1d": 86_400_000,
   };
   return map[interval] || 60_000;
+}
+
+/**
+ * Get price movement stats for a feed over a given lookback duration.
+ * Returns the oldest and newest price in the window + net change.
+ */
+export function getPriceMovement(
+  feedId: number,
+  lookbackMs: number
+): { startPrice: number; endPrice: number; changePercent: number } | null {
+  const now = Date.now();
+  const cutoff = now - lookbackMs;
+
+  let oldest: PriceTick | null = null;
+  let newest: PriceTick | null = null;
+
+  // Scan backwards. Don't break on cutoff — ticks are interleaved across feeds.
+  // Use a generous early-exit: stop once we've gone 2x past the lookback for any feed.
+  const hardCutoff = now - lookbackMs * 2;
+
+  for (let i = priceTicks.length - 1; i >= 0; i--) {
+    const tick = priceTicks[i];
+    if (tick.timestamp < hardCutoff) break;
+    if (tick.feedId !== feedId) continue;
+    if (tick.timestamp < cutoff) continue;
+    if (!newest) newest = tick;
+    oldest = tick;
+  }
+
+  // If we only have 1 tick in the window, grab the most recent tick before the cutoff as start
+  if (newest && (!oldest || oldest === newest)) {
+    for (let i = priceTicks.length - 1; i >= 0; i--) {
+      const tick = priceTicks[i];
+      if (tick.feedId !== feedId) continue;
+      if (tick.timestamp < cutoff) {
+        oldest = tick;
+        break;
+      }
+    }
+  }
+
+  if (!oldest || !newest) return null;
+
+  const startPrice = Number(oldest.price) / 1e18;
+  const endPrice = Number(newest.price) / 1e18;
+  const changePercent = startPrice > 0 ? ((endPrice - startPrice) / startPrice) * 100 : 0;
+
+  return { startPrice, endPrice, changePercent };
 }
 
 /**
@@ -106,8 +164,8 @@ export function getCandlesSync(
       results.push(candle);
     }
   }
-  results.sort((a, b) => b.timestamp - a.timestamp);
-  return results.slice(0, limit);
+  results.sort((a, b) => a.timestamp - b.timestamp);
+  return results.slice(-limit);
 }
 
 // Keep backward compat export

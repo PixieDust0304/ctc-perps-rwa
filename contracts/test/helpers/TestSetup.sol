@@ -25,10 +25,10 @@ abstract contract TestSetup is Test {
 
     uint16 public constant GOLD_FEED = 2056;
     uint16 public constant SILVER_FEED = 2069;
-    uint16 public constant COPPER_FEED = 2015;
+    uint16 public constant CRUDE_OIL_FEED = 2003;
     uint16 public constant PLATINUM_FEED = 2062;
 
-    uint256 public constant STALENESS_THRESHOLD = 10;
+    uint256 public constant STALENESS_THRESHOLD = 210;
 
     function setUp() public virtual {
         signer = vm.addr(signerPrivateKey);
@@ -49,7 +49,7 @@ abstract contract TestSetup is Test {
         uint16[] memory feedIds = new uint16[](4);
         feedIds[0] = GOLD_FEED;
         feedIds[1] = SILVER_FEED;
-        feedIds[2] = COPPER_FEED;
+        feedIds[2] = CRUDE_OIL_FEED;
         feedIds[3] = PLATINUM_FEED;
 
         Oracle oracleImpl = new Oracle();
@@ -99,7 +99,7 @@ abstract contract TestSetup is Test {
     function _updateAllPrices(
         uint256 goldRaw,
         uint256 silverRaw,
-        uint256 copperRaw,
+        uint256 crudeOilRaw,
         uint256 platinumRaw,
         uint256 timestamp,
         bool fresh
@@ -111,7 +111,7 @@ abstract contract TestSetup is Test {
 
         feedIds[0] = GOLD_FEED; prices[0] = goldRaw; timestamps[0] = timestamp; freshFlags[0] = fresh;
         feedIds[1] = SILVER_FEED; prices[1] = silverRaw; timestamps[1] = timestamp; freshFlags[1] = fresh;
-        feedIds[2] = COPPER_FEED; prices[2] = copperRaw; timestamps[2] = timestamp; freshFlags[2] = fresh;
+        feedIds[2] = CRUDE_OIL_FEED; prices[2] = crudeOilRaw; timestamps[2] = timestamp; freshFlags[2] = fresh;
         feedIds[3] = PLATINUM_FEED; prices[3] = platinumRaw; timestamps[3] = timestamp; freshFlags[3] = fresh;
 
         bytes32 messageHash = keccak256(

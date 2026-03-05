@@ -41,13 +41,13 @@ export async function fetchPrices(): Promise<PriceTick[]> {
 /**
  * Start continuous price fetching at configured interval
  */
-export function startFetcher(onPrices: (ticks: PriceTick[]) => void): NodeJS.Timeout {
+export function startFetcher(onPrices: (ticks: PriceTick[]) => Promise<void> | void): NodeJS.Timeout {
   logger.info("Fetcher", `Starting price fetcher (${config.fetchIntervalMs}ms interval)`);
 
   const interval = setInterval(async () => {
     try {
       const ticks = await fetchPrices();
-      onPrices(ticks);
+      await onPrices(ticks);
     } catch (err) {
       logger.error("Fetcher", `Fetch failed: ${(err as Error).message}`);
     }

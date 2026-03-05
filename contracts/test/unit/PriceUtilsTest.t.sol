@@ -22,8 +22,8 @@ contract PriceUtilsTest is Test {
         assertEq(price18, 83e18);
     }
 
-    function test_toPrice18_copper() public pure {
-        // Copper ~$2.95: raw = 29500000000
+    function test_toPrice18_crudeOil() public pure {
+        // CrudeOil test value: raw = 29500000000
         // 29500000000 * 1e8 = 2.95e18
         uint256 price18 = PriceUtils.toPrice18(29500000000);
         assertEq(price18, 2.95e18);

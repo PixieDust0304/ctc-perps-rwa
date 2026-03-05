@@ -1,13 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# CTC-Perps Local Development Startup
-# Starts: Anvil -> Deploy -> Oracle Service -> Frontend
+# CTC-Perps Local Development Startup (fully self-contained)
+# Kills stale processes, cleans artifacts, deploys fresh, starts everything.
 
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 CONTRACTS_DIR="$ROOT_DIR/contracts"
 ORACLE_DIR="$ROOT_DIR/oracle"
 FRONTEND_DIR="$ROOT_DIR/frontend"
+
+# Foundry binaries (installed via foundryup)
+FORGE="${FORGE:-$HOME/.foundry/bin/forge}"
+ANVIL="${ANVIL:-$HOME/.foundry/bin/anvil}"
 
 # Anvil default keys
 DEPLOYER_PRIVATE_KEY="0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
@@ -17,6 +21,11 @@ SIGNER_PRIVATE_KEY="0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b
 SIGNER_ADDRESS="0x70997970C51812dc3A010C7d01b50e0d17dc79C8"
 
 ANVIL_PORT=8545
+WS_PORT=8080
+API_PORT=3001
+FRONTEND_PORT=3000
+DB_URL="postgresql://localhost:5432/ctc_perps"
+
 PIDS=()
 
 cleanup() {
@@ -34,9 +43,56 @@ log() {
   echo "[$(date +%H:%M:%S)] $1"
 }
 
-# ─── 1. Start Anvil ────────────────────────────────────────────────
+# ─── 0. Kill stale processes & clean artifacts ────────────────────
+log "Cleaning up stale processes..."
+# Kill anything on our ports
+for port in $ANVIL_PORT $WS_PORT $API_PORT $FRONTEND_PORT; do
+  pid=$(lsof -ti ":$port" 2>/dev/null || true)
+  if [ -n "$pid" ]; then
+    log "  Killing PID $pid on port $port"
+    kill "$pid" 2>/dev/null || true
+  fi
+done
+# Also kill by process name in case ports aren't bound yet
+pkill -f "anvil.*--port.*$ANVIL_PORT" 2>/dev/null || true
+pkill -f "tsx src/index.ts" 2>/dev/null || true
+pkill -f "next dev.*--port.*$FRONTEND_PORT" 2>/dev/null || true
+sleep 1
+
+log "Cleaning broadcast artifacts..."
+rm -rf "$CONTRACTS_DIR/broadcast/"
+
+# ─── 0b. Wipe database ───────────────────────────────────────────
+log "Wiping database..."
+if command -v psql &>/dev/null; then
+  if psql -h localhost -p 5432 -c "SELECT 1" &>/dev/null; then
+    psql -h localhost -p 5432 -c "DROP DATABASE IF EXISTS ctc_perps;" 2>/dev/null || true
+    psql -h localhost -p 5432 -c "CREATE DATABASE ctc_perps;" 2>/dev/null || true
+    log "PostgreSQL database wiped and recreated."
+    # Run Prisma schema push
+    cd "$ORACLE_DIR"
+    DATABASE_URL="$DB_URL" npx prisma db push --skip-generate --accept-data-loss 2>/dev/null || true
+    log "Prisma schema pushed."
+  else
+    log "PostgreSQL not reachable — oracle will use in-memory mode."
+  fi
+else
+  log "psql not found — oracle will use in-memory mode."
+fi
+
+# ─── 0c. Install dependencies if needed ──────────────────────────
+if [ ! -d "$ORACLE_DIR/node_modules" ]; then
+  log "Installing oracle dependencies..."
+  cd "$ORACLE_DIR" && npm install
+fi
+if [ ! -d "$FRONTEND_DIR/node_modules" ]; then
+  log "Installing frontend dependencies..."
+  cd "$FRONTEND_DIR" && npm install
+fi
+
+# ─── 1. Start Anvil ──────────────────────────────────────────────
 log "Starting Anvil on port $ANVIL_PORT..."
-anvil --port "$ANVIL_PORT" --block-time 2 --silent &
+"$ANVIL" --port "$ANVIL_PORT" --block-time 2 --silent &
 PIDS+=($!)
 sleep 2
 
@@ -48,13 +104,13 @@ if ! curl -s http://127.0.0.1:$ANVIL_PORT -X POST -H "Content-Type: application/
 fi
 log "Anvil running."
 
-# ─── 2. Deploy Contracts ───────────────────────────────────────────
+# ─── 2. Deploy Contracts ─────────────────────────────────────────
 log "Deploying contracts..."
 cd "$CONTRACTS_DIR"
 
 DEPLOY_OUTPUT=$(DEPLOYER_PRIVATE_KEY="$DEPLOYER_PRIVATE_KEY" \
   ORACLE_SIGNER="$SIGNER_ADDRESS" \
-  forge script script/DeployLocal.s.sol:DeployLocal \
+  "$FORGE" script script/DeployLocal.s.sol:DeployLocal \
     --rpc-url "http://127.0.0.1:$ANVIL_PORT" \
     --broadcast \
     --private-key "$DEPLOYER_PRIVATE_KEY" 2>&1)
@@ -77,21 +133,29 @@ TRADING_ADDRESS=$(extract_addr "Trading")
 VAMM_ADDRESS=$(extract_addr "VAMM")
 P2P_TRADING_ADDRESS=$(extract_addr "P2PTrading")
 GOVERNANCE_ADDRESS=$(extract_addr "Governance")
+CUSTODY_GOLD=$(extract_addr "Custody Gold")
+CUSTODY_SILVER=$(extract_addr "Custody Silver")
+CUSTODY_CRUDE_OIL=$(extract_addr "Custody CrudeOil")
+CUSTODY_PLATINUM=$(extract_addr "Custody Platinum")
 
 log "Contracts deployed."
-echo "  MockUSDC:    $USDC_ADDRESS"
-echo "  CLP:         $CLP_ADDRESS"
-echo "  CPERP:       $CPERP_ADDRESS"
-echo "  Oracle:      $ORACLE_ADDRESS"
-echo "  Pool:        $POOL_ADDRESS"
-echo "  FeeManager:  $FEE_MANAGER_ADDRESS"
-echo "  MarketState: $MARKET_STATE_ADDRESS"
-echo "  Trading:     $TRADING_ADDRESS"
-echo "  VAMM:        $VAMM_ADDRESS"
-echo "  P2PTrading:  $P2P_TRADING_ADDRESS"
-echo "  Governance:  $GOVERNANCE_ADDRESS"
+echo "  MockUSDC:         $USDC_ADDRESS"
+echo "  CLP:              $CLP_ADDRESS"
+echo "  CPERP:            $CPERP_ADDRESS"
+echo "  Oracle:           $ORACLE_ADDRESS"
+echo "  Pool:             $POOL_ADDRESS"
+echo "  FeeManager:       $FEE_MANAGER_ADDRESS"
+echo "  MarketState:      $MARKET_STATE_ADDRESS"
+echo "  Trading:          $TRADING_ADDRESS"
+echo "  VAMM:             $VAMM_ADDRESS"
+echo "  P2PTrading:       $P2P_TRADING_ADDRESS"
+echo "  Governance:       $GOVERNANCE_ADDRESS"
+echo "  Custody Gold:     $CUSTODY_GOLD"
+echo "  Custody Silver:   $CUSTODY_SILVER"
+echo "  Custody CrudeOil: $CUSTODY_CRUDE_OIL"
+echo "  Custody Platinum: $CUSTODY_PLATINUM"
 
-# ─── 3. Write addresses to frontend config ─────────────────────────
+# ─── 3. Write addresses to shared config ─────────────────────────
 ADDR_FILE="$ROOT_DIR/.addresses.json"
 cat > "$ADDR_FILE" << EOF
 {
@@ -105,12 +169,19 @@ cat > "$ADDR_FILE" << EOF
   "trading": "$TRADING_ADDRESS",
   "vamm": "$VAMM_ADDRESS",
   "p2pTrading": "$P2P_TRADING_ADDRESS",
-  "governance": "$GOVERNANCE_ADDRESS"
+  "governance": "$GOVERNANCE_ADDRESS",
+  "custodyGold": "$CUSTODY_GOLD",
+  "custodySilver": "$CUSTODY_SILVER",
+  "custodyCrudeOil": "$CUSTODY_CRUDE_OIL",
+  "custodyPlatinum": "$CUSTODY_PLATINUM"
 }
 EOF
 log "Addresses written to .addresses.json"
 
-# ─── 4. Start Oracle Service ───────────────────────────────────────
+# Build custody addresses JSON for oracle service
+CUSTODY_ADDRESSES="{\"2056\":\"$CUSTODY_GOLD\",\"2069\":\"$CUSTODY_SILVER\",\"2003\":\"$CUSTODY_CRUDE_OIL\",\"2062\":\"$CUSTODY_PLATINUM\"}"
+
+# ─── 4. Start Oracle Service ─────────────────────────────────────
 log "Starting oracle service..."
 cd "$ORACLE_DIR"
 
@@ -119,42 +190,56 @@ TRADING_ADDRESS="$TRADING_ADDRESS" \
 P2P_TRADING_ADDRESS="$P2P_TRADING_ADDRESS" \
 MARKET_STATE_ADDRESS="$MARKET_STATE_ADDRESS" \
 VAMM_ADDRESS="$VAMM_ADDRESS" \
+POOL_ADDRESS="$POOL_ADDRESS" \
+FEE_MANAGER_ADDRESS="$FEE_MANAGER_ADDRESS" \
+CUSTODY_ADDRESSES="$CUSTODY_ADDRESSES" \
 SIGNER_PRIVATE_KEY="$SIGNER_PRIVATE_KEY" \
 RPC_URL="http://127.0.0.1:$ANVIL_PORT" \
+DATABASE_URL="$DB_URL" \
 CHAIN_ID=31337 \
-WS_PORT=8080 \
-API_PORT=3001 \
+WS_PORT=$WS_PORT \
+API_PORT=$API_PORT \
 npx tsx src/index.ts &
 PIDS+=($!)
 sleep 2
-log "Oracle service started (WS: 8080, API: 3001)."
+log "Oracle service started (WS: $WS_PORT, API: $API_PORT)."
 
-# ─── 5. Start Frontend ────────────────────────────────────────────
+# ─── 5. Start Frontend ───────────────────────────────────────────
 log "Starting frontend..."
 cd "$FRONTEND_DIR"
 
 NEXT_PUBLIC_TRADING_ADDRESS="$TRADING_ADDRESS" \
+NEXT_PUBLIC_P2P_TRADING_ADDRESS="$P2P_TRADING_ADDRESS" \
 NEXT_PUBLIC_POOL_ADDRESS="$POOL_ADDRESS" \
 NEXT_PUBLIC_MOCK_USDC_ADDRESS="$USDC_ADDRESS" \
 NEXT_PUBLIC_MARKET_STATE_ADDRESS="$MARKET_STATE_ADDRESS" \
-NEXT_PUBLIC_WS_URL="ws://localhost:8080" \
-npx next dev --port 3000 &
+NEXT_PUBLIC_ORACLE_ADDRESS="$ORACLE_ADDRESS" \
+NEXT_PUBLIC_VAMM_ADDRESS="$VAMM_ADDRESS" \
+NEXT_PUBLIC_GOVERNANCE_ADDRESS="$GOVERNANCE_ADDRESS" \
+NEXT_PUBLIC_CLP_ADDRESS="$CLP_ADDRESS" \
+NEXT_PUBLIC_CPERP_ADDRESS="$CPERP_ADDRESS" \
+NEXT_PUBLIC_WS_URL="ws://localhost:$WS_PORT" \
+NEXT_PUBLIC_API_URL="http://localhost:$API_PORT" \
+NEXT_PUBLIC_RPC_URL="http://127.0.0.1:$ANVIL_PORT" \
+NEXT_PUBLIC_CHAIN_ID=31337 \
+npx next dev --port $FRONTEND_PORT &
 PIDS+=($!)
 
-log "Frontend starting on http://localhost:3000"
+log "Frontend starting on http://localhost:$FRONTEND_PORT"
 
-# ─── Summary ───────────────────────────────────────────────────────
+# ─── Summary ─────────────────────────────────────────────────────
 echo ""
 echo "========================================="
 echo "  CTC-Perps Local Stack Running"
 echo "========================================="
 echo "  Anvil RPC:     http://127.0.0.1:$ANVIL_PORT"
-echo "  Oracle WS:     ws://localhost:8080"
-echo "  Oracle API:    http://localhost:3001"
-echo "  Frontend:      http://localhost:3000"
+echo "  Oracle WS:     ws://localhost:$WS_PORT"
+echo "  Oracle API:    http://localhost:$API_PORT"
+echo "  Frontend:      http://localhost:$FRONTEND_PORT"
 echo ""
 echo "  Deployer:      $DEPLOYER_ADDRESS"
 echo "  Oracle Signer: $SIGNER_ADDRESS"
+echo "  Governance:    $GOVERNANCE_ADDRESS"
 echo "========================================="
 echo ""
 echo "Press Ctrl+C to stop all services."

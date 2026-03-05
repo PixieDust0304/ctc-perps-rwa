@@ -16,7 +16,7 @@ function parseCustodyAddresses(): Record<number, string> {
     } catch {}
   }
   const result: Record<number, string> = {};
-  for (const feedId of [2056, 2069, 2015, 2062]) {
+  for (const feedId of [2056, 2069, 2003, 2062]) {
     const addr = process.env[`CUSTODY_${feedId}`];
     if (addr) result[feedId] = addr;
   }
@@ -29,11 +29,11 @@ export const config = {
   autonomApiKey: process.env.AUTONOM_API_KEY || "readkey1",
 
   // Feed IDs
-  feedIds: [2056, 2069, 2015, 2062] as const,
+  feedIds: [2056, 2069, 2003, 2062] as const,
   feedNames: {
     2056: "Gold/XAU",
     2069: "Silver/XAG",
-    2015: "Copper/HG1",
+    2003: "CrudeOil/CL1",
     2062: "Platinum/XPT",
   } as Record<number, string>,
 
@@ -58,7 +58,7 @@ export const config = {
 
   // Timings
   fetchIntervalMs: 500,
-  stalenessThresholdMs: 10_000,
+  stalenessThresholdMs: 210_000,
   feeInterval: 15,
 
   // Server

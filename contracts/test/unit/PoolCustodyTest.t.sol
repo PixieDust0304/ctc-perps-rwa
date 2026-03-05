@@ -13,7 +13,7 @@ contract PoolCustodyTest is TestSetup {
     Pool public pool;
     Custody public goldCustody;
     Custody public silverCustody;
-    Custody public copperCustody;
+    Custody public crudeOilCustody;
     Custody public platinumCustody;
     FeeManager public feeManager;
     MarketState public marketState;
@@ -37,13 +37,13 @@ contract PoolCustodyTest is TestSetup {
         // Deploy 4 Custodies
         goldCustody = _deployCustody(GOLD_FEED);
         silverCustody = _deployCustody(SILVER_FEED);
-        copperCustody = _deployCustody(COPPER_FEED);
+        crudeOilCustody = _deployCustody(CRUDE_OIL_FEED);
         platinumCustody = _deployCustody(PLATINUM_FEED);
 
         // Add custodies to pool (equal 25% allocation each)
         pool.addCustody(address(goldCustody), 2500);
         pool.addCustody(address(silverCustody), 2500);
-        pool.addCustody(address(copperCustody), 2500);
+        pool.addCustody(address(crudeOilCustody), 2500);
         pool.addCustody(address(platinumCustody), 2500);
 
         // Deploy FeeManager
@@ -61,7 +61,7 @@ contract PoolCustodyTest is TestSetup {
 
         marketState.registerFeed(GOLD_FEED);
         marketState.registerFeed(SILVER_FEED);
-        marketState.registerFeed(COPPER_FEED);
+        marketState.registerFeed(CRUDE_OIL_FEED);
         marketState.registerFeed(PLATINUM_FEED);
 
         vm.stopPrank();
@@ -91,7 +91,7 @@ contract PoolCustodyTest is TestSetup {
         // Each custody gets 25%
         assertEq(goldCustody.availableBalance(), 2500e18);
         assertEq(silverCustody.availableBalance(), 2500e18);
-        assertEq(copperCustody.availableBalance(), 2500e18);
+        assertEq(crudeOilCustody.availableBalance(), 2500e18);
         assertEq(platinumCustody.availableBalance(), 2500e18);
     }
 
@@ -224,7 +224,7 @@ contract PoolCustodyTest is TestSetup {
         uint256[] memory balances = new uint256[](4);
         balances[0] = 1000e18;   // Gold: low
         balances[1] = 5000e18;   // Silver: medium
-        balances[2] = 15000e18;  // Copper: high
+        balances[2] = 15000e18;  // CrudeOil: high
         balances[3] = 19000e18;  // Platinum: high
 
         uint256[] memory amounts = WaterfallWithdraw.calculate(8000e18, balances);

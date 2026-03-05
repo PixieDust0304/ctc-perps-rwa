@@ -1,0 +1,32 @@
+{
+  "schema_version": "v2.0",
+  "generated_at": "2025-10-14T00:00:00Z",
+  "products": {
+    "indices": {
+      "SPX": {
+        "feed_id": 7001,
+        "symbol": "SPX",
+        "name": "S&P 500 Index",
+        "currency": "USD",
+        "expo": -10,
+        "exchange": "US_INDEX",
+        "unit": "index_point",
+        "aliases": ["SPX", "^GSPC", "S&P500", "SP500"],
+        "active": true,
+        "exchange_policy": "index"
+      },
+      "NDX": {
+        "feed_id": 7002,
+        "symbol": "NDX",
+        "name": "Nasdaq-100 Index",
+        "currency": "USD",
+        "expo": -10,
+        "exchange": "US_INDEX",
+        "unit": "index_point",
+        "aliases": ["NDX", "^NDX", "NASDAQ100"],
+        "active": true,
+        "exchange_policy": "index"
+      }
+    }
+  }
+}

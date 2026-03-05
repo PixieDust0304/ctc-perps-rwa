@@ -22,13 +22,13 @@ contract DeployLocal is Script {
     // Feed IDs
     uint16 constant GOLD = 2056;
     uint16 constant SILVER = 2069;
-    uint16 constant COPPER = 2015;
+    uint16 constant CRUDE_OIL = 2003;
     uint16 constant PLATINUM = 2062;
 
     // VAMM depths (virtual depth in USD, 18 decimals)
     uint256 constant GOLD_DEPTH = 13_000_000e18;
     uint256 constant SILVER_DEPTH = 5_000_000e18;
-    uint256 constant COPPER_DEPTH = 2_000_000e18;
+    uint256 constant CRUDE_OIL_DEPTH = 2_000_000e18;
     uint256 constant PLATINUM_DEPTH = 3_000_000e18;
 
     function run() external {
@@ -54,12 +54,12 @@ contract DeployLocal is Script {
 
         // 2. Oracle
         uint16[] memory feedIds = new uint16[](4);
-        feedIds[0] = GOLD; feedIds[1] = SILVER; feedIds[2] = COPPER; feedIds[3] = PLATINUM;
+        feedIds[0] = GOLD; feedIds[1] = SILVER; feedIds[2] = CRUDE_OIL; feedIds[3] = PLATINUM;
 
         Oracle oracleImpl = new Oracle();
         Oracle oracle = Oracle(address(new ERC1967Proxy(
             address(oracleImpl),
-            abi.encodeCall(Oracle.initialize, (deployer, oracleSigner, 10, feedIds))
+            abi.encodeCall(Oracle.initialize, (deployer, oracleSigner, 210, feedIds))
         )));
         console.log("Oracle:", address(oracle));
 
@@ -88,24 +88,24 @@ contract DeployLocal is Script {
         )));
         marketState.registerFeed(GOLD);
         marketState.registerFeed(SILVER);
-        marketState.registerFeed(COPPER);
+        marketState.registerFeed(CRUDE_OIL);
         marketState.registerFeed(PLATINUM);
         console.log("MarketState:", address(marketState));
 
         // 6. Custodies
         address goldCustody = _deployCustody(deployer, GOLD, address(usdc), address(pool));
         address silverCustody = _deployCustody(deployer, SILVER, address(usdc), address(pool));
-        address copperCustody = _deployCustody(deployer, COPPER, address(usdc), address(pool));
+        address crudeOilCustody = _deployCustody(deployer, CRUDE_OIL, address(usdc), address(pool));
         address platinumCustody = _deployCustody(deployer, PLATINUM, address(usdc), address(pool));
 
         pool.addCustody(goldCustody, 2500);
         pool.addCustody(silverCustody, 2500);
-        pool.addCustody(copperCustody, 2500);
+        pool.addCustody(crudeOilCustody, 2500);
         pool.addCustody(platinumCustody, 2500);
 
         console.log("Custody Gold:", goldCustody);
         console.log("Custody Silver:", silverCustody);
-        console.log("Custody Copper:", copperCustody);
+        console.log("Custody CrudeOil:", crudeOilCustody);
         console.log("Custody Platinum:", platinumCustody);
 
         // 7. Trading
@@ -115,17 +115,17 @@ contract DeployLocal is Script {
             abi.encodeCall(Trading.initialize, (
                 deployer, address(usdc), address(oracle), address(pool),
                 address(feeManager), address(marketState),
-                100e18, 3000, 10e18, 120
+                100e18, 3000, 10e18, 400
             ))
         )));
         trading.setFeedCustody(GOLD, goldCustody);
         trading.setFeedCustody(SILVER, silverCustody);
-        trading.setFeedCustody(COPPER, copperCustody);
+        trading.setFeedCustody(CRUDE_OIL, crudeOilCustody);
         trading.setFeedCustody(PLATINUM, platinumCustody);
         pool.setTrading(address(trading));
         Custody(goldCustody).setTrading(address(trading));
         Custody(silverCustody).setTrading(address(trading));
-        Custody(copperCustody).setTrading(address(trading));
+        Custody(crudeOilCustody).setTrading(address(trading));
         Custody(platinumCustody).setTrading(address(trading));
         console.log("Trading:", address(trading));
 
@@ -137,7 +137,7 @@ contract DeployLocal is Script {
         )));
         vamm.setDepthMultiplier(GOLD, GOLD_DEPTH);
         vamm.setDepthMultiplier(SILVER, SILVER_DEPTH);
-        vamm.setDepthMultiplier(COPPER, COPPER_DEPTH);
+        vamm.setDepthMultiplier(CRUDE_OIL, CRUDE_OIL_DEPTH);
         vamm.setDepthMultiplier(PLATINUM, PLATINUM_DEPTH);
         vamm.setMarketState(address(marketState));
         console.log("VAMM:", address(vamm));
@@ -157,7 +157,7 @@ contract DeployLocal is Script {
         p2pTrading.setSettlementKeeper(oracleSigner);
         Custody(goldCustody).setP2PTrading(address(p2pTrading));
         Custody(silverCustody).setP2PTrading(address(p2pTrading));
-        Custody(copperCustody).setP2PTrading(address(p2pTrading));
+        Custody(crudeOilCustody).setP2PTrading(address(p2pTrading));
         Custody(platinumCustody).setP2PTrading(address(p2pTrading));
         console.log("P2PTrading:", address(p2pTrading));
 
@@ -186,7 +186,7 @@ contract DeployLocal is Script {
         marketState.transferOwnership(address(governance));
         Custody(goldCustody).transferOwnership(address(governance));
         Custody(silverCustody).transferOwnership(address(governance));
-        Custody(copperCustody).transferOwnership(address(governance));
+        Custody(crudeOilCustody).transferOwnership(address(governance));
         Custody(platinumCustody).transferOwnership(address(governance));
 
         vm.stopBroadcast();

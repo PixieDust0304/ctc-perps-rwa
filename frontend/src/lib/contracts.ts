@@ -17,7 +17,7 @@ export const CONTRACTS = {
 export const FEEDS = [
   { id: 2056, name: "Gold", symbol: "XAU" },
   { id: 2069, name: "Silver", symbol: "XAG" },
-  { id: 2015, name: "Copper", symbol: "HG1" },
+  { id: 2003, name: "Crude Oil", symbol: "CL1" },
   { id: 2062, name: "Platinum", symbol: "XPT" },
 ] as const;
 

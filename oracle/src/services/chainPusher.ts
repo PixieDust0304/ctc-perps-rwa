@@ -35,42 +35,52 @@ export async function pushPrices(ticks: PriceTick[]): Promise<void> {
   const timestamps = filteredTicks.map((t) => BigInt(t.timestamp));
   const freshFlags = filteredTicks.map((t) => t.fresh);
 
-  await retry(
-    async () => {
-      const signature = await signPriceBatch(feedIds, rawPrices, timestamps, freshFlags);
+  try {
+    await retry(
+      async () => {
+        const signature = await signPriceBatch(feedIds, rawPrices, timestamps, freshFlags);
 
-      const walletClient = getWalletClient();
-      const publicClient = createPublicClient({
-        chain: creditcoinLocal,
-        transport: http(config.rpcUrl),
-      });
+        const walletClient = getWalletClient();
+        const publicClient = createPublicClient({
+          chain: creditcoinLocal,
+          transport: http(config.rpcUrl),
+        });
 
-      const { request } = await publicClient.simulateContract({
-        address: config.oracleAddress as Hex,
-        abi: OracleABI,
-        functionName: "updatePrices",
-        args: [
-          feedIds.map((id) => id),
-          rawPrices,
-          timestamps,
-          freshFlags,
-          signature,
-        ],
-        account: walletClient.account,
-      });
+        const { request } = await publicClient.simulateContract({
+          address: config.oracleAddress as Hex,
+          abi: OracleABI,
+          functionName: "updatePrices",
+          args: [
+            feedIds.map((id) => id),
+            rawPrices,
+            timestamps,
+            freshFlags,
+            signature,
+          ],
+          account: walletClient.account,
+        });
 
-      const txHash = await walletClient.writeContract(request);
-      logger.info("ChainPusher", `Prices pushed, tx: ${txHash}`);
+        const txHash = await walletClient.writeContract(request);
+        logger.info("ChainPusher", `Prices pushed, tx: ${txHash}`);
+      },
+      3,
+      1000,
+      "pushPrices"
+    );
+  } catch (err) {
+    const msg = (err as Error).message || "";
+    if (msg.includes("stale update")) {
+      // Prices already on-chain with same or newer timestamp — skip silently
+      logger.debug("ChainPusher", "Skipping push: on-chain timestamps are current");
+    } else {
+      logger.error("ChainPusher", `Push failed: ${msg.slice(0, 200)}`);
+    }
+  }
 
-      // Update last pushed timestamps
-      for (const tick of filteredTicks) {
-        lastPushedTimestamps[tick.feedId] = tick.timestamp;
-      }
-    },
-    3,
-    1000,
-    "pushPrices"
-  );
+  // Always update last pushed timestamps to avoid re-attempting same data
+  for (const tick of filteredTicks) {
+    lastPushedTimestamps[tick.feedId] = tick.timestamp;
+  }
 
   // Post-push hooks: fee accrual + liquidation (same tick)
   try {

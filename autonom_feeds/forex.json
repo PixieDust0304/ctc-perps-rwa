@@ -1,0 +1,189 @@
+{
+  "schema_version": "v2.0",
+  "generated_at": "2025-10-10T00:00:00.000000Z",
+  "products": {
+    "equities": {},
+    "commodities": {},
+    "stablecoins": {},
+    "forex": {
+      "EURUSD": {
+        "feed_id": 6001,
+        "symbol": "EUR/USD",
+        "name": "Euro / US Dollar",
+        "currency": "USD",
+        "expo": -10,
+        "unit": "EUR",
+        "asset_class": "Forex",
+        "exchange_policy": "spot",
+        "active": true
+      },
+      "USDJPY": {
+        "feed_id": 6002,
+        "symbol": "USD/JPY",
+        "name": "US Dollar / Japanese Yen",
+        "currency": "JPY",
+        "expo": -10,
+        "unit": "USD",
+        "asset_class": "Forex",
+        "exchange_policy": "spot",
+        "active": true
+      },
+      "USDSEK": {
+        "feed_id": 6003,
+        "symbol": "USD/SEK",
+        "name": "US Dollar / Swedish Krona",
+        "currency": "SEK",
+        "expo": -10,
+        "unit": "USD",
+        "asset_class": "Forex",
+        "exchange_policy": "spot",
+        "active": true
+      },
+      "USDTRY": {
+        "feed_id": 6004,
+        "symbol": "USD/TRY",
+        "name": "US Dollar / Turkish Lira",
+        "currency": "TRY",
+        "expo": -10,
+        "unit": "USD",
+        "asset_class": "Forex",
+        "exchange_policy": "spot",
+        "active": true
+      },
+      "GBPUSD": {
+        "feed_id": 6005,
+        "symbol": "GBP/USD",
+        "name": "British Pound / US Dollar",
+        "currency": "USD",
+        "expo": -10,
+        "unit": "GBP",
+        "asset_class": "Forex",
+        "exchange_policy": "spot",
+        "active": true
+      },
+      "NZDUSD": {
+        "feed_id": 6006,
+        "symbol": "NZD/USD",
+        "name": "New Zealand Dollar / US Dollar",
+        "currency": "USD",
+        "expo": -10,
+        "unit": "NZD",
+        "asset_class": "Forex",
+        "exchange_policy": "spot",
+        "active": true
+      },
+      "USDCNH": {
+        "feed_id": 6007,
+        "symbol": "USD/CNH",
+        "name": "US Dollar / Chinese Yuan (Offshore)",
+        "currency": "CNH",
+        "expo": -10,
+        "unit": "USD",
+        "asset_class": "Forex",
+        "exchange_policy": "spot",
+        "active": true
+      },
+      "AUDUSD": {
+        "feed_id": 6008,
+        "symbol": "AUD/USD",
+        "name": "Australian Dollar / US Dollar",
+        "currency": "USD",
+        "expo": -10,
+        "unit": "AUD",
+        "asset_class": "Forex",
+        "exchange_policy": "spot",
+        "active": true
+      },
+      "USDCHF": {
+        "feed_id": 6009,
+        "symbol": "USD/CHF",
+        "name": "US Dollar / Swiss Franc",
+        "currency": "CHF",
+        "expo": -10,
+        "unit": "USD",
+        "asset_class": "Forex",
+        "exchange_policy": "spot",
+        "active": true
+      },
+      "USDBRL": {
+        "feed_id": 6010,
+        "symbol": "USD/BRL",
+        "name": "US Dollar / Brazilian Real",
+        "currency": "BRL",
+        "expo": -10,
+        "unit": "USD",
+        "asset_class": "Forex",
+        "exchange_policy": "spot",
+        "active": true
+      },
+      "USDTWD": {
+        "feed_id": 6011,
+        "symbol": "USD/TWD",
+        "name": "US Dollar / Taiwan Dollar",
+        "currency": "TWD",
+        "expo": -10,
+        "unit": "USD",
+        "asset_class": "Forex",
+        "exchange_policy": "spot",
+        "active": true
+      },
+      "USDCAD": {
+        "feed_id": 6012,
+        "symbol": "USD/CAD",
+        "name": "US Dollar / Canadian Dollar",
+        "currency": "CAD",
+        "expo": -10,
+        "unit": "USD",
+        "asset_class": "Forex",
+        "exchange_policy": "spot",
+        "active": true
+      },
+      "USDSGD": {
+        "feed_id": 6013,
+        "symbol": "USD/SGD",
+        "name": "US Dollar / Singapore Dollar",
+        "currency": "SGD",
+        "expo": -10,
+        "unit": "USD",
+        "asset_class": "Forex",
+        "exchange_policy": "spot",
+        "active": true
+      },
+      "USDINR": {
+        "feed_id": 6014,
+        "symbol": "USD/INR",
+        "name": "US Dollar / Indian Rupee",
+        "currency": "INR",
+        "expo": -10,
+        "unit": "USD",
+        "asset_class": "Forex",
+        "exchange_policy": "spot",
+        "active": true
+      },
+      "USDMXN": {
+        "feed_id": 6015,
+        "symbol": "USD/MXN",
+        "name": "US Dollar / Mexican Peso",
+        "currency": "MXN",
+        "expo": -10,
+        "unit": "USD",
+        "asset_class": "Forex",
+        "exchange_policy": "spot",
+        "active": true
+      },
+      "USDZAR": {
+        "feed_id": 6016,
+        "symbol": "USD/ZAR",
+        "name": "US Dollar / South African Rand",
+        "currency": "ZAR",
+        "expo": -10,
+        "unit": "USD",
+        "asset_class": "Forex",
+        "exchange_policy": "spot",
+        "active": true
+      }
+    },
+    "perpetuals": {}
+  },
+  "aliases": {}
+}
