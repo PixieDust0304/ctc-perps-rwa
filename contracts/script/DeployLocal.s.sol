@@ -154,7 +154,7 @@ contract DeployLocal is Script {
         )));
         vamm.setP2PTrading(address(p2pTrading));
         pool.setP2PTrading(address(p2pTrading));
-        p2pTrading.setSettlementKeeper(deployer);
+        p2pTrading.setSettlementKeeper(oracleSigner);
         Custody(goldCustody).setP2PTrading(address(p2pTrading));
         Custody(silverCustody).setP2PTrading(address(p2pTrading));
         Custody(copperCustody).setP2PTrading(address(p2pTrading));
@@ -172,9 +172,27 @@ contract DeployLocal is Script {
         // 11. Mint test USDC to deployer
         usdc.mint(deployer, 10_000_000e18);
 
+        // 12. Transfer ownership of all contracts to Governance
+        // After this, all onlyOwner functions (parameter changes, upgrades,
+        // pause/unpause) can ONLY be called via a passed DAO proposal.
+        // The oracle signer wallet only has: trustedSigner signature authority
+        // (Oracle.updatePrices) and settlementKeeper role (P2PTrading.settleP2PBatch).
+        oracle.transferOwnership(address(governance));
+        pool.transferOwnership(address(governance));
+        trading.transferOwnership(address(governance));
+        p2pTrading.transferOwnership(address(governance));
+        vamm.transferOwnership(address(governance));
+        feeManager.transferOwnership(address(governance));
+        marketState.transferOwnership(address(governance));
+        Custody(goldCustody).transferOwnership(address(governance));
+        Custody(silverCustody).transferOwnership(address(governance));
+        Custody(copperCustody).transferOwnership(address(governance));
+        Custody(platinumCustody).transferOwnership(address(governance));
+
         vm.stopBroadcast();
 
         console.log("--- Deployment Complete ---");
+        console.log("All contract ownership transferred to Governance:", address(governance));
     }
 
     function _deployCustody(
