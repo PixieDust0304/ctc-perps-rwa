@@ -172,7 +172,11 @@ contract DeployLocal is Script {
         // 11. Mint test USDC to deployer
         usdc.mint(deployer, 10_000_000e18);
 
-        // 12. Transfer ownership of all contracts to Governance
+        // 12. Bootstrap custody liquidity — deposit 2M USDC into Pool (500k per custody)
+        usdc.approve(address(pool), 2_000_000e18);
+        pool.deposit(2_000_000e18);
+
+        // 13. Transfer ownership of all contracts to Governance
         // After this, all onlyOwner functions (parameter changes, upgrades,
         // pause/unpause) can ONLY be called via a passed DAO proposal.
         // The oracle signer wallet only has: trustedSigner signature authority

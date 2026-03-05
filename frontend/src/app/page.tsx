@@ -6,6 +6,8 @@ import { OrderPanel } from "../components/trading/OrderPanel";
 import { MarketStatusBanner } from "../components/trading/MarketStatusBanner";
 import { PriceChart } from "../components/trading/PriceChart";
 import { PositionList } from "../components/trading/PositionList";
+import { CustodyLiquidity } from "../components/trading/CustodyLiquidity";
+import { FaucetButton } from "../components/trading/FaucetButton";
 import { usePrices } from "../hooks/usePrices";
 import { useState } from "react";
 import Link from "next/link";
@@ -37,7 +39,10 @@ export default function TradingPage() {
             {connected ? "Live" : "Connecting..."}
           </span>
         </div>
-        <ConnectButton />
+        <div className="flex items-center gap-3">
+          <FaucetButton />
+          <ConnectButton showBalance={false} />
+        </div>
       </header>
 
       {/* Market Status */}
@@ -53,6 +58,9 @@ export default function TradingPage() {
         onSelect={setSelectedFeedId}
       />
 
+      {/* Custody Liquidity */}
+      <CustodyLiquidity />
+
       {/* Main Trading Area */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 p-4">
         {/* Chart */}
@@ -65,7 +73,7 @@ export default function TradingPage() {
         </div>
 
         {/* Order Panel */}
-        <div className="bg-gray-900 rounded-lg p-4">
+        <div className="bg-gray-900 rounded-lg p-4 flex flex-col">
           <OrderPanel
             feedId={selectedFeedId}
             currentPrice={selectedPrice?.price ?? 0}

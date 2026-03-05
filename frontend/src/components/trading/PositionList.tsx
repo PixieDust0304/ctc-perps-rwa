@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useAccount, useWriteContract, usePublicClient } from "wagmi";
+import { useAccount, usePublicClient } from "wagmi";
 import { type Address, parseAbiItem, formatEther } from "viem";
 import { CONTRACTS, TRADING_ABI } from "../../lib/contracts";
+import { useContractWrite } from "../../hooks/useContractWrite";
 
 interface PositionData {
   positionId: `0x${string}`;
@@ -28,7 +29,7 @@ export function PositionList({
   prices: { id: number; price: number }[];
 }) {
   const { address } = useAccount();
-  const { writeContract, isPending } = useWriteContract();
+  const { execute, isPending } = useContractWrite();
   const publicClient = usePublicClient();
   const [positions, setPositions] = useState<PositionData[]>([]);
   const [loading, setLoading] = useState(false);
@@ -99,12 +100,15 @@ export function PositionList({
 
   const handleClose = (positionId: `0x${string}`) => {
     if (!CONTRACTS.trading) return;
-    writeContract({
-      address: CONTRACTS.trading as Address,
-      abi: TRADING_ABI,
-      functionName: "closePosition",
-      args: [positionId],
-    });
+    execute(
+      {
+        address: CONTRACTS.trading as Address,
+        abi: TRADING_ABI,
+        functionName: "closePosition",
+        args: [positionId],
+      },
+      "Closing position"
+    );
   };
 
   const getPnl = (pos: PositionData) => {

@@ -1,6 +1,6 @@
 // Contract addresses — populated after deploy
 export const CONTRACTS = {
-  mockUSDC: process.env.NEXT_PUBLIC_USDC_ADDRESS || "",
+  mockUSDC: process.env.NEXT_PUBLIC_MOCK_USDC_ADDRESS || "",
   clp: process.env.NEXT_PUBLIC_CLP_ADDRESS || "",
   cperp: process.env.NEXT_PUBLIC_CPERP_ADDRESS || "",
   oracle: process.env.NEXT_PUBLIC_ORACLE_ADDRESS || "",
@@ -12,6 +12,24 @@ export const CONTRACTS = {
   marketState: process.env.NEXT_PUBLIC_MARKET_STATE_ADDRESS || "",
   governance: process.env.NEXT_PUBLIC_GOVERNANCE_ADDRESS || "",
 } as const;
+
+// Custody addresses per feed
+function parseCustodyAddresses(): Record<number, string> {
+  try {
+    const json = process.env.NEXT_PUBLIC_CUSTODY_ADDRESSES;
+    if (!json) return {};
+    const parsed = JSON.parse(json);
+    const result: Record<number, string> = {};
+    for (const [k, v] of Object.entries(parsed)) {
+      result[Number(k)] = v as string;
+    }
+    return result;
+  } catch {
+    return {};
+  }
+}
+
+export const CUSTODY_ADDRESSES = parseCustodyAddresses();
 
 // Feed config
 export const FEEDS = [
@@ -128,5 +146,26 @@ export const MARKET_STATE_ABI = [
     inputs: [{ name: "feedId", type: "uint16" }],
     outputs: [{ name: "", type: "bool" }],
     stateMutability: "view",
+  },
+] as const;
+
+export const CUSTODY_ABI = [
+  {
+    name: "availableBalance",
+    type: "function",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+] as const;
+
+export const MOCK_USDC_ABI = [
+  ...ERC20_ABI,
+  {
+    name: "faucet",
+    type: "function",
+    inputs: [],
+    outputs: [],
+    stateMutability: "nonpayable",
   },
 ] as const;

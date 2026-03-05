@@ -4,10 +4,10 @@ import { useState } from "react";
 import {
   useAccount,
   useReadContract,
-  useWriteContract,
 } from "wagmi";
 import { parseEther, formatEther, type Address } from "viem";
 import { CONTRACTS, POOL_ABI, ERC20_ABI } from "../../lib/contracts";
+import { useContractWrite } from "../../hooks/useContractWrite";
 
 const CLP_ABI = [
   {
@@ -28,7 +28,7 @@ const CLP_ABI = [
 
 export function PoolPanel() {
   const { address, isConnected } = useAccount();
-  const { writeContract, isPending } = useWriteContract();
+  const { execute, isPending } = useContractWrite();
 
   const [depositAmount, setDepositAmount] = useState("");
   const [withdrawAmount, setWithdrawAmount] = useState("");
@@ -73,37 +73,46 @@ export function PoolPanel() {
   const sharePercent = totalClp > 0 ? (userClp / totalClp) * 100 : 0;
   const userPoolValue = totalClp > 0 ? (userClp / totalClp) * poolTvl : 0;
 
-  const handleDeposit = () => {
+  const handleDeposit = async () => {
     if (!address || !CONTRACTS.pool || !depositAmount) return;
     const amount = parseEther(depositAmount);
 
-    // Approve first
-    writeContract({
-      address: CONTRACTS.mockUSDC as Address,
-      abi: ERC20_ABI,
-      functionName: "approve",
-      args: [CONTRACTS.pool as Address, amount],
-    });
+    const approved = await execute(
+      {
+        address: CONTRACTS.mockUSDC as Address,
+        abi: ERC20_ABI,
+        functionName: "approve",
+        args: [CONTRACTS.pool as Address, amount],
+      },
+      "Approving USDC"
+    );
 
-    // Then deposit
-    writeContract({
-      address: CONTRACTS.pool as Address,
-      abi: POOL_ABI,
-      functionName: "deposit",
-      args: [amount],
-    });
+    if (!approved) return;
+
+    await execute(
+      {
+        address: CONTRACTS.pool as Address,
+        abi: POOL_ABI,
+        functionName: "deposit",
+        args: [amount],
+      },
+      `Depositing ${depositAmount} USDC`
+    );
   };
 
-  const handleWithdraw = () => {
+  const handleWithdraw = async () => {
     if (!address || !CONTRACTS.pool || !withdrawAmount) return;
     const amount = parseEther(withdrawAmount);
 
-    writeContract({
-      address: CONTRACTS.pool as Address,
-      abi: POOL_ABI,
-      functionName: "withdraw",
-      args: [amount],
-    });
+    await execute(
+      {
+        address: CONTRACTS.pool as Address,
+        abi: POOL_ABI,
+        functionName: "withdraw",
+        args: [amount],
+      },
+      `Withdrawing ${withdrawAmount} CLP`
+    );
   };
 
   return (

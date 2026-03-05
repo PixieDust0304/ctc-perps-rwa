@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { useAccount, useWriteContract } from "wagmi";
+import { useAccount } from "wagmi";
 import { parseEther, type Address } from "viem";
 import { CONTRACTS, TRADING_ABI, ERC20_ABI } from "../../lib/contracts";
+import { useContractWrite } from "../../hooks/useContractWrite";
 
 interface OrderPanelProps {
   feedId: number;
@@ -17,7 +18,7 @@ export function OrderPanel({
   isMarketOpen,
 }: OrderPanelProps) {
   const { address, isConnected } = useAccount();
-  const { writeContract, isPending } = useWriteContract();
+  const { execute, isPending } = useContractWrite();
 
   const [isLong, setIsLong] = useState(true);
   const [collateral, setCollateral] = useState("");
@@ -29,7 +30,6 @@ export function OrderPanel({
   const openFee = notional * 0.001; // 0.1%
   const feePercent = leverageNum * 0.1; // fee as % of collateral
 
-  // Liq price: price at which effective collateral = 30% of initial (maintenance margin)
   const liqPrice = currentPrice > 0 && leverageNum > 0
     ? isLong
       ? currentPrice * (1 - 0.7 / leverageNum)
@@ -43,24 +43,32 @@ export function OrderPanel({
     const leverageWei = parseEther(leverage);
 
     // Step 1: Approve
-    writeContract({
-      address: CONTRACTS.mockUSDC as Address,
-      abi: ERC20_ABI,
-      functionName: "approve",
-      args: [CONTRACTS.trading as Address, collateralWei],
-    });
+    const approved = await execute(
+      {
+        address: CONTRACTS.mockUSDC as Address,
+        abi: ERC20_ABI,
+        functionName: "approve",
+        args: [CONTRACTS.trading as Address, collateralWei],
+      },
+      "Approving USDC"
+    );
 
-    // Step 2: Open position (after approval)
-    writeContract({
-      address: CONTRACTS.trading as Address,
-      abi: TRADING_ABI,
-      functionName: "openPosition",
-      args: [feedId, isLong, collateralWei, leverageWei],
-    });
+    if (!approved) return;
+
+    // Step 2: Open position
+    await execute(
+      {
+        address: CONTRACTS.trading as Address,
+        abi: TRADING_ABI,
+        functionName: "openPosition",
+        args: [feedId, isLong, collateralWei, leverageWei],
+      },
+      `Opening ${isLong ? "Long" : "Short"} $${notional.toFixed(0)}`
+    );
   };
 
   return (
-    <div className="space-y-4">
+    <div className="flex flex-col flex-1 space-y-4">
       <h3 className="text-lg font-semibold text-white">
         {isMarketOpen ? "Open Position" : "Open P2P Position"}
       </h3>
@@ -142,7 +150,7 @@ export function OrderPanel({
         <div className="flex justify-between">
           <span className="text-gray-400">Liq. Price</span>
           <span className="text-orange-400 font-mono">
-            {liqPrice > 0 ? `$${liqPrice.toFixed(2)}` : "—"}
+            {liqPrice > 0 ? `$${liqPrice.toFixed(2)}` : "\u2014"}
           </span>
         </div>
         {feePercent >= 5 && (
@@ -153,6 +161,7 @@ export function OrderPanel({
         )}
       </div>
 
+      <div className="flex-1" />
       {/* Submit Button */}
       <button
         onClick={handleApproveAndOpen}

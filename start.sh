@@ -45,19 +45,35 @@ log() {
 
 # ─── 0. Kill stale processes & clean artifacts ────────────────────
 log "Cleaning up stale processes..."
-# Kill anything on our ports
-for port in $ANVIL_PORT $WS_PORT $API_PORT $FRONTEND_PORT; do
-  pid=$(lsof -ti ":$port" 2>/dev/null || true)
-  if [ -n "$pid" ]; then
-    log "  Killing PID $pid on port $port"
-    kill "$pid" 2>/dev/null || true
-  fi
+# Kill anything on our ports (try multiple times to be thorough)
+for attempt in 1 2; do
+  for port in $ANVIL_PORT $WS_PORT $API_PORT $FRONTEND_PORT; do
+    pids=$(lsof -ti ":$port" 2>/dev/null || true)
+    if [ -n "$pids" ]; then
+      for pid in $pids; do
+        log "  Killing PID $pid on port $port"
+        kill -9 "$pid" 2>/dev/null || true
+      done
+    fi
+  done
+  [ "$attempt" -eq 1 ] && sleep 1
 done
 # Also kill by process name in case ports aren't bound yet
-pkill -f "anvil.*--port.*$ANVIL_PORT" 2>/dev/null || true
-pkill -f "tsx src/index.ts" 2>/dev/null || true
-pkill -f "next dev.*--port.*$FRONTEND_PORT" 2>/dev/null || true
-sleep 1
+pkill -9 -f "anvil.*--port.*$ANVIL_PORT" 2>/dev/null || true
+pkill -9 -f "tsx src/index.ts" 2>/dev/null || true
+pkill -9 -f "next dev.*--port.*$FRONTEND_PORT" 2>/dev/null || true
+pkill -9 -f "next-server" 2>/dev/null || true
+sleep 2
+
+# Verify ports are free
+for port in $ANVIL_PORT $WS_PORT $API_PORT $FRONTEND_PORT; do
+  if lsof -ti ":$port" &>/dev/null; then
+    log "ERROR: Port $port still in use after cleanup!"
+    lsof -i ":$port" 2>/dev/null
+    exit 1
+  fi
+done
+log "All ports free."
 
 log "Cleaning broadcast artifacts..."
 rm -rf "$CONTRACTS_DIR/broadcast/"
@@ -102,7 +118,7 @@ if ! curl -s http://127.0.0.1:$ANVIL_PORT -X POST -H "Content-Type: application/
   echo "ERROR: Anvil failed to start on port $ANVIL_PORT"
   exit 1
 fi
-log "Anvil running."
+log "Anvil running (PID ${PIDS[-1]})."
 
 # ─── 2. Deploy Contracts ─────────────────────────────────────────
 log "Deploying contracts..."
@@ -118,6 +134,7 @@ DEPLOY_OUTPUT=$(DEPLOYER_PRIVATE_KEY="$DEPLOYER_PRIVATE_KEY" \
 echo "$DEPLOY_OUTPUT"
 
 # Parse deployed addresses from forge output
+# NOTE: "Trading:" must match exactly (not P2PTrading) — use head -1 for first match
 extract_addr() {
   echo "$DEPLOY_OUTPUT" | grep "$1:" | tail -1 | awk '{print $NF}'
 }
@@ -125,11 +142,11 @@ extract_addr() {
 USDC_ADDRESS=$(extract_addr "MockUSDC")
 CLP_ADDRESS=$(extract_addr "CLP")
 CPERP_ADDRESS=$(extract_addr "CPERP")
-ORACLE_ADDRESS=$(extract_addr "Oracle")
+ORACLE_CONTRACT_ADDRESS=$(extract_addr "Oracle")
 POOL_ADDRESS=$(extract_addr "Pool")
 FEE_MANAGER_ADDRESS=$(extract_addr "FeeManager")
 MARKET_STATE_ADDRESS=$(extract_addr "MarketState")
-TRADING_ADDRESS=$(extract_addr "Trading")
+TRADING_ADDRESS=$(echo "$DEPLOY_OUTPUT" | grep "  Trading:" | head -1 | awk '{print $NF}')
 VAMM_ADDRESS=$(extract_addr "VAMM")
 P2P_TRADING_ADDRESS=$(extract_addr "P2PTrading")
 GOVERNANCE_ADDRESS=$(extract_addr "Governance")
@@ -138,11 +155,19 @@ CUSTODY_SILVER=$(extract_addr "Custody Silver")
 CUSTODY_CRUDE_OIL=$(extract_addr "Custody CrudeOil")
 CUSTODY_PLATINUM=$(extract_addr "Custody Platinum")
 
+# Sanity check: Trading and P2P must be different addresses
+if [ "$TRADING_ADDRESS" = "$P2P_TRADING_ADDRESS" ]; then
+  echo "ERROR: Trading and P2PTrading resolved to the same address! Parsing bug."
+  echo "  Trading:    $TRADING_ADDRESS"
+  echo "  P2PTrading: $P2P_TRADING_ADDRESS"
+  exit 1
+fi
+
 log "Contracts deployed."
 echo "  MockUSDC:         $USDC_ADDRESS"
 echo "  CLP:              $CLP_ADDRESS"
 echo "  CPERP:            $CPERP_ADDRESS"
-echo "  Oracle:           $ORACLE_ADDRESS"
+echo "  Oracle:           $ORACLE_CONTRACT_ADDRESS"
 echo "  Pool:             $POOL_ADDRESS"
 echo "  FeeManager:       $FEE_MANAGER_ADDRESS"
 echo "  MarketState:      $MARKET_STATE_ADDRESS"
@@ -162,7 +187,7 @@ cat > "$ADDR_FILE" << EOF
   "mockUSDC": "$USDC_ADDRESS",
   "clp": "$CLP_ADDRESS",
   "cperp": "$CPERP_ADDRESS",
-  "oracle": "$ORACLE_ADDRESS",
+  "oracle": "$ORACLE_CONTRACT_ADDRESS",
   "pool": "$POOL_ADDRESS",
   "feeManager": "$FEE_MANAGER_ADDRESS",
   "marketState": "$MARKET_STATE_ADDRESS",
@@ -185,7 +210,7 @@ CUSTODY_ADDRESSES="{\"2056\":\"$CUSTODY_GOLD\",\"2069\":\"$CUSTODY_SILVER\",\"20
 log "Starting oracle service..."
 cd "$ORACLE_DIR"
 
-ORACLE_ADDRESS="$ORACLE_ADDRESS" \
+ORACLE_ADDRESS="$ORACLE_CONTRACT_ADDRESS" \
 TRADING_ADDRESS="$TRADING_ADDRESS" \
 P2P_TRADING_ADDRESS="$P2P_TRADING_ADDRESS" \
 MARKET_STATE_ADDRESS="$MARKET_STATE_ADDRESS" \
@@ -201,8 +226,21 @@ WS_PORT=$WS_PORT \
 API_PORT=$API_PORT \
 npx tsx src/index.ts &
 PIDS+=($!)
-sleep 2
-log "Oracle service started (WS: $WS_PORT, API: $API_PORT)."
+
+# Wait for oracle to be ready (check API endpoint)
+log "Waiting for oracle service to be ready..."
+for i in $(seq 1 30); do
+  if curl -s "http://127.0.0.1:$API_PORT/api/prices" > /dev/null 2>&1; then
+    break
+  fi
+  sleep 1
+done
+
+if curl -s "http://127.0.0.1:$API_PORT/api/prices" > /dev/null 2>&1; then
+  log "Oracle service ready (WS: $WS_PORT, API: $API_PORT, PID ${PIDS[-1]})."
+else
+  log "WARNING: Oracle API not responding yet — it may still be starting up."
+fi
 
 # ─── 5. Start Frontend ───────────────────────────────────────────
 log "Starting frontend..."
@@ -213,11 +251,13 @@ NEXT_PUBLIC_P2P_TRADING_ADDRESS="$P2P_TRADING_ADDRESS" \
 NEXT_PUBLIC_POOL_ADDRESS="$POOL_ADDRESS" \
 NEXT_PUBLIC_MOCK_USDC_ADDRESS="$USDC_ADDRESS" \
 NEXT_PUBLIC_MARKET_STATE_ADDRESS="$MARKET_STATE_ADDRESS" \
-NEXT_PUBLIC_ORACLE_ADDRESS="$ORACLE_ADDRESS" \
+NEXT_PUBLIC_ORACLE_ADDRESS="$ORACLE_CONTRACT_ADDRESS" \
 NEXT_PUBLIC_VAMM_ADDRESS="$VAMM_ADDRESS" \
 NEXT_PUBLIC_GOVERNANCE_ADDRESS="$GOVERNANCE_ADDRESS" \
 NEXT_PUBLIC_CLP_ADDRESS="$CLP_ADDRESS" \
 NEXT_PUBLIC_CPERP_ADDRESS="$CPERP_ADDRESS" \
+NEXT_PUBLIC_FEE_MANAGER_ADDRESS="$FEE_MANAGER_ADDRESS" \
+NEXT_PUBLIC_CUSTODY_ADDRESSES="{\"2056\":\"$CUSTODY_GOLD\",\"2069\":\"$CUSTODY_SILVER\",\"2003\":\"$CUSTODY_CRUDE_OIL\",\"2062\":\"$CUSTODY_PLATINUM\"}" \
 NEXT_PUBLIC_WS_URL="ws://localhost:$WS_PORT" \
 NEXT_PUBLIC_API_URL="http://localhost:$API_PORT" \
 NEXT_PUBLIC_RPC_URL="http://127.0.0.1:$ANVIL_PORT" \
@@ -225,17 +265,25 @@ NEXT_PUBLIC_CHAIN_ID=31337 \
 npx next dev --port $FRONTEND_PORT &
 PIDS+=($!)
 
-log "Frontend starting on http://localhost:$FRONTEND_PORT"
+# Wait for frontend
+log "Waiting for frontend to be ready..."
+for i in $(seq 1 30); do
+  if curl -s "http://127.0.0.1:$FRONTEND_PORT" > /dev/null 2>&1; then
+    break
+  fi
+  sleep 1
+done
+log "Frontend started (PID ${PIDS[-1]})."
 
 # ─── Summary ─────────────────────────────────────────────────────
 echo ""
 echo "========================================="
 echo "  CTC-Perps Local Stack Running"
 echo "========================================="
-echo "  Anvil RPC:     http://127.0.0.1:$ANVIL_PORT"
+echo "  Anvil RPC:     http://127.0.0.1:$ANVIL_PORT  (PID ${PIDS[0]})"
 echo "  Oracle WS:     ws://localhost:$WS_PORT"
-echo "  Oracle API:    http://localhost:$API_PORT"
-echo "  Frontend:      http://localhost:$FRONTEND_PORT"
+echo "  Oracle API:    http://localhost:$API_PORT      (PID ${PIDS[1]})"
+echo "  Frontend:      http://localhost:$FRONTEND_PORT      (PID ${PIDS[2]})"
 echo ""
 echo "  Deployer:      $DEPLOYER_ADDRESS"
 echo "  Oracle Signer: $SIGNER_ADDRESS"

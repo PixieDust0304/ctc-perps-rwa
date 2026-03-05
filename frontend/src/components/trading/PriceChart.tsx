@@ -138,9 +138,10 @@ export function PriceChart({
         borderColor: "#374151",
         timeVisible: true,
         secondsVisible: selected.interval === "15s",
+        rightOffset: 5,
       },
       width: containerRef.current.clientWidth,
-      height: 400,
+      height: 500,
     });
 
     const series = chart.addLineSeries({
@@ -250,40 +251,42 @@ export function PriceChart({
   const movementSign = movement && movement.changePercent > 0 ? "+" : "";
 
   return (
-    <div className="relative">
-      {/* Header: feed name, price, movement */}
-      <div className="absolute top-2 left-2 z-10 flex items-center gap-3">
-        <span className="text-gray-400 text-sm">{feedName} / USD</span>
-        <span
-          className={`text-lg font-mono px-2 py-0.5 rounded transition-all duration-1000 ${priceColor} ${flashBg}`}
-        >
-          ${currentPrice > 0 ? currentPrice.toFixed(2) : "---"}
-          {priceDirection === "up" && <span className="ml-1 text-xs">&#9650;</span>}
-          {priceDirection === "down" && <span className="ml-1 text-xs">&#9660;</span>}
-        </span>
-        {movement && (
-          <span className={`text-sm font-mono ${movementColor}`}>
-            {movementSign}{movement.changePercent.toFixed(2)}%
-            <span className="text-gray-500 ml-1 text-xs">{movementLookback > selected.lookbackMs ? "5m" : selected.label}</span>
-          </span>
-        )}
-      </div>
-
-      {/* Interval selector */}
-      <div className="absolute top-2 right-2 z-10 flex gap-0.5 flex-wrap justify-end">
-        {INTERVALS.map((iv, idx) => (
-          <button
-            key={iv.label}
-            onClick={() => setSelectedIdx(idx)}
-            className={`px-2 py-0.5 rounded text-xs font-medium transition-colors ${
-              idx === selectedIdx
-                ? "bg-blue-600 text-white"
-                : "bg-gray-800/80 text-gray-400 hover:bg-gray-700 hover:text-gray-200"
-            }`}
+    <div>
+      {/* Header: feed name, price, movement + interval selector */}
+      <div className="flex items-center justify-between px-3 py-2">
+        <div className="flex items-center gap-3">
+          <span className="text-gray-400 text-sm">{feedName} / USD</span>
+          <span
+            className={`text-lg font-mono px-2 py-0.5 rounded transition-all duration-1000 ${priceColor} ${flashBg}`}
           >
-            {iv.label}
-          </button>
-        ))}
+            ${currentPrice > 0 ? currentPrice.toFixed(2) : "---"}
+            {priceDirection === "up" && <span className="ml-1 text-xs">&#9650;</span>}
+            {priceDirection === "down" && <span className="ml-1 text-xs">&#9660;</span>}
+          </span>
+          {movement && (
+            <span className={`text-sm font-mono ${movementColor}`}>
+              {movementSign}{movement.changePercent.toFixed(2)}%
+              <span className="text-gray-500 ml-1 text-xs">{movementLookback > selected.lookbackMs ? "5m" : selected.label}</span>
+            </span>
+          )}
+        </div>
+
+        {/* Interval selector */}
+        <div className="flex gap-0.5 flex-wrap justify-end">
+          {INTERVALS.map((iv, idx) => (
+            <button
+              key={iv.label}
+              onClick={() => setSelectedIdx(idx)}
+              className={`px-2 py-0.5 rounded text-xs font-medium transition-colors ${
+                idx === selectedIdx
+                  ? "bg-blue-600 text-white"
+                  : "bg-gray-800/80 text-gray-400 hover:bg-gray-700 hover:text-gray-200"
+              }`}
+            >
+              {iv.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div ref={containerRef} className="w-full" />

@@ -4,11 +4,11 @@ import { useState, useEffect, useCallback } from "react";
 import {
   useAccount,
   useReadContract,
-  useWriteContract,
   usePublicClient,
 } from "wagmi";
 import { type Address, encodeFunctionData } from "viem";
 import { CONTRACTS, ERC20_ABI } from "../../lib/contracts";
+import { useContractWrite } from "../../hooks/useContractWrite";
 
 const GOVERNANCE_ABI = [
   {
@@ -142,7 +142,7 @@ interface ProposalData {
 
 export function GovernancePanel() {
   const { address, isConnected } = useAccount();
-  const { writeContract, isPending } = useWriteContract();
+  const { execute, isPending } = useContractWrite();
   const publicClient = usePublicClient();
   const [proposals, setProposals] = useState<ProposalData[]>([]);
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -206,25 +206,31 @@ export function GovernancePanel() {
 
   const handleVote = (proposalId: number, support: boolean) => {
     if (!CONTRACTS.governance) return;
-    writeContract({
-      address: CONTRACTS.governance as Address,
-      abi: GOVERNANCE_ABI,
-      functionName: "vote",
-      args: [BigInt(proposalId), support],
-    });
+    execute(
+      {
+        address: CONTRACTS.governance as Address,
+        abi: GOVERNANCE_ABI,
+        functionName: "vote",
+        args: [BigInt(proposalId), support],
+      },
+      `Voting ${support ? "For" : "Against"} #${proposalId}`
+    );
   };
 
   const handleExecute = (proposalId: number) => {
     if (!CONTRACTS.governance) return;
-    writeContract({
-      address: CONTRACTS.governance as Address,
-      abi: GOVERNANCE_ABI,
-      functionName: "execute",
-      args: [BigInt(proposalId)],
-    });
+    execute(
+      {
+        address: CONTRACTS.governance as Address,
+        abi: GOVERNANCE_ABI,
+        functionName: "execute",
+        args: [BigInt(proposalId)],
+      },
+      `Executing proposal #${proposalId}`
+    );
   };
 
-  const handlePropose = () => {
+  const handlePropose = async () => {
     if (!CONTRACTS.governance) return;
 
     let target: string;
@@ -252,12 +258,15 @@ export function GovernancePanel() {
 
     if (!target) return;
 
-    writeContract({
-      address: CONTRACTS.governance as Address,
-      abi: GOVERNANCE_ABI,
-      functionName: "propose",
-      args: [target as Address, callData],
-    });
+    await execute(
+      {
+        address: CONTRACTS.governance as Address,
+        abi: GOVERNANCE_ABI,
+        functionName: "propose",
+        args: [target as Address, callData],
+      },
+      "Submitting proposal"
+    );
 
     setShowCreateForm(false);
     setParamValue("");
