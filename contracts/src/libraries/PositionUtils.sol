@@ -41,27 +41,28 @@ library PositionUtils {
         }
     }
 
-    /// @notice Calculate effective collateral after fees and PnL
+    /// @notice Calculate effective collateral after fees, funding, and PnL
+    /// @param fundingAmount Signed funding: positive = trader pays, negative = trader receives
     function effectiveCollateral(
         uint256 initialCollateral,
         uint256 accumulatedFees,
-        uint256 fundingOwed,
+        int256 fundingAmount,
         uint256 pnl,
         bool isProfit
     ) internal pure returns (uint256) {
-        uint256 effective = initialCollateral;
-        // Subtract fees
-        uint256 totalDeductions = accumulatedFees + fundingOwed;
-        if (totalDeductions >= effective) return 0;
-        effective -= totalDeductions;
+        int256 effective = int256(initialCollateral);
+        // Subtract base fees
+        effective -= int256(accumulatedFees);
+        // Apply funding (positive = trader pays → deduct, negative = trader receives → add)
+        effective -= fundingAmount;
+        if (effective <= 0) return 0;
         // Apply PnL
         if (isProfit) {
-            effective += pnl;
+            effective += int256(pnl);
         } else {
-            if (pnl >= effective) return 0;
-            effective -= pnl;
+            effective -= int256(pnl);
         }
-        return effective;
+        return effective > 0 ? uint256(effective) : 0;
     }
 
     /// @notice Check if a position should be liquidated

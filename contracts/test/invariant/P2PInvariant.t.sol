@@ -24,6 +24,11 @@ contract P2PHandler {
 
     uint256 public totalCollateralIn;
     uint256 public openPositionCount;
+    uint256 public closedPositionCount;
+
+    // Track position IDs and their owners for closing
+    bytes32[] public positionIds;
+    mapping(bytes32 => address) public positionOwners;
 
     Vm private constant vm = Vm(address(uint160(uint256(keccak256("hevm cheat code")))));
 
@@ -49,9 +54,13 @@ contract P2PHandler {
 
         vm.startPrank(actor);
         usdc.approve(address(p2pTrading), amount);
+        uint256 counterBefore = p2pTrading.positionCounter();
         try p2pTrading.openP2PPosition(feedId, true, amount, 5e18) {
             totalCollateralIn += amount;
             openPositionCount++;
+            bytes32 posId = keccak256(abi.encodePacked(actor, counterBefore + 1, "p2p"));
+            positionIds.push(posId);
+            positionOwners[posId] = actor;
         } catch {}
         vm.stopPrank();
     }
@@ -62,9 +71,34 @@ contract P2PHandler {
 
         vm.startPrank(actor);
         usdc.approve(address(p2pTrading), amount);
+        uint256 counterBefore = p2pTrading.positionCounter();
         try p2pTrading.openP2PPosition(feedId, false, amount, 5e18) {
             totalCollateralIn += amount;
             openPositionCount++;
+            bytes32 posId = keccak256(abi.encodePacked(actor, counterBefore + 1, "p2p"));
+            positionIds.push(posId);
+            positionOwners[posId] = actor;
+        } catch {}
+        vm.stopPrank();
+    }
+
+    function closePosition(uint256 indexSeed) public {
+        if (positionIds.length == 0) return;
+        uint256 idx = indexSeed % positionIds.length;
+        bytes32 posId = positionIds[idx];
+        address owner = positionOwners[posId];
+        if (owner == address(0)) return;
+
+        // Warp past min open time
+        vm.warp(block.timestamp + 121);
+
+        vm.startPrank(owner);
+        try p2pTrading.closeP2PPosition(posId) {
+            closedPositionCount++;
+            // Remove from tracking by swapping with last
+            positionOwners[posId] = address(0);
+            positionIds[idx] = positionIds[positionIds.length - 1];
+            positionIds.pop();
         } catch {}
         vm.stopPrank();
     }
@@ -159,19 +193,17 @@ contract P2PInvariantTest is TestSetup {
         targetContract(address(handler));
     }
 
-    /// @notice P2P escrow balance >= actual USDC in contract (minus pool fees sent out)
-    /// The escrow tracking should never exceed actual USDC held
+    /// @notice P2P escrow tracker must never exceed actual USDC in contract
+    /// After closes, losing positions leave residual USDC (escrow < actual), which is fine.
+    /// But escrow > actual would mean the contract can't pay out all tracked obligations.
     function invariant_escrowBackedByUSDC() public view {
         uint256 escrowTracked = p2pTrading.p2pEscrowBalance(GOLD_FEED);
         uint256 actualUSDC = usdc.balanceOf(address(p2pTrading));
 
-        // Actual USDC >= tracked escrow (fees were sent to pool, reducing actual but not affecting escrow accounting)
-        // Actually escrow tracks collateralAfterFee, so it should be <= actual USDC
-        // Wait — fees are sent to pool, so actual USDC = sum(collateralAfterFee) = escrow
-        assertEq(
+        assertLe(
             escrowTracked,
             actualUSDC,
-            "P2P escrow tracking must match actual USDC held"
+            "P2P escrow tracking must not exceed actual USDC held"
         );
     }
 

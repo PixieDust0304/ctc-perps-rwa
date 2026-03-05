@@ -317,6 +317,19 @@ contract P2PTrading is IP2PTrading, OwnableUpgradeable, UUPSUpgradeable, Pausabl
         return feedPositionIds[feedId].length;
     }
 
+    /// @notice Sweep leftover USDC dust after all positions for a feed are closed
+    /// This handles rounding dust that can accumulate from profitable close caps
+    function sweepLeftoverUSDC(uint16 feedId) external onlyOwner {
+        require(p2pEscrowBalance[feedId] == 0, "P2P: positions still open");
+        require(p2pLongOI[feedId] == 0 && p2pShortOI[feedId] == 0, "P2P: OI not zero");
+
+        uint256 leftover = usdc.balanceOf(address(this));
+        if (leftover > 0) {
+            usdc.safeTransfer(address(pool), leftover);
+            pool.receiveFees(leftover);
+        }
+    }
+
     // Admin
     function setSettlementKeeper(address keeper) external onlyOwner {
         settlementKeeper = keeper;

@@ -1,6 +1,6 @@
 # CTC-Perps: Build Status
 
-## Current Phase: Security Hardened (v1)
+## Current Phase: Economics Hardened — v1 COMPLETE
 
 ## Progress Tracker
 
@@ -94,9 +94,19 @@
 - [x] P2PInvariantTest — 3 tests: escrow backed by USDC, USDC conservation, OI bounds
 - [x] Slither static analysis — 0 critical findings (59 total, all low/informational)
 
+### Phase 10: Economics Hardening ✅
+- [x] VFR (Variable Funding Rate) enforcement in Trading.sol — funding accumulator now consumed on close/liquidate
+- [x] Signed funding snapshot (int256) in Position struct — preserves direction
+- [x] Funding flows through pool as intermediary (zero-sum: long pays → pool gains, short receives → pool loses)
+- [x] PositionUtils.effectiveCollateral accepts signed funding (can add or deduct)
+- [x] Liquidation includes funding in effective collateral check
+- [x] P2P leftover USDC sweep function (sweepLeftoverUSDC)
+- [x] P2P invariant handler with close operations (open + close fuzzing)
+- [x] 3 new funding rate tests: solo long pays pool, balanced OI zero funding, imbalanced OI dominant pays more
+
 ## Test Summary
 
-**108 Solidity tests passing** across 16 test suites:
+**111 Solidity tests passing** across 16 test suites:
 - `FixedPointMathTest` (8 tests, incl. fuzz)
 - `PriceUtilsTest` (5 tests)
 - `FeeCalculatorTest` (9 tests)
@@ -106,7 +116,7 @@
 - `GovernanceTest` (7 tests)
 - `TradingTest` (10 integration tests)
 - `P2PTradingTest` (7 integration tests)
-- `FullLifecycleTest` (5 integration tests)
+- `FullLifecycleTest` (8 integration tests)
 - `MarketTransitionTest` (3 integration tests)
 - `CustodyDrainTest` (3 integration tests)
 - `P2PEscrowDrainTest` (4 integration tests)
@@ -129,6 +139,9 @@
 | P2P escrow tracker desync | Profitable close only reduced escrow by collateral (not collateral+profit) — escrow > actual USDC — subsequent closers revert | Decrease escrow by `collateral + cappedPnl`; cap payout at contract USDC balance |
 | P2P fees stuck in pool contract | P2P fees sent to pool but not forwarded to custodies — waterfall can't find USDC | pool.receiveFees distributes P2P fees to custodies |
 | settleP2PBatch missing nonReentrant | Batch settlement lacked reentrancy guard — defense in depth gap | Added nonReentrant modifier |
+| VFR never enforced | Funding rate accumulator accrued but never consumed on close — longs never pay shorts when OI is imbalanced | `_calculateAccumulatedFunding()` + wire into `_closePosition` and `liquidate`; signed `int256` snapshot |
+| Funding snapshot loses sign | `uint256(abs(cumulativeFundingPerUnit))` lost direction — position always "owed" funding | Store `int256` snapshot directly, compute signed delta on close |
+| P2P leftover USDC stuck | After all P2P positions close, rounding dust stays in contract forever | `sweepLeftoverUSDC()` sends residual to pool |
 
 ## Slither Findings Summary
 
@@ -136,8 +149,8 @@
 |----------|-------|---------|
 | High | 0 | — |
 | Medium | 1 | abi.encodePacked collision (Oracle) — mitigated by ECDSA signature |
-| Low | 4 | Reentrancy (all have nonReentrant), divide-before-multiply (intentional) |
-| Informational | 54 | Missing events, zero-checks, timestamp usage, loop calls |
+| Low | 4 | Reentrancy (all have nonReentrant), divide-before-multiply (intentional), strict equality |
+| Informational | 59 | Missing events, zero-checks, timestamp usage, loop calls, cyclomatic complexity |
 
 ## Decision Log
 
@@ -153,6 +166,9 @@
 | 2026-03-05 | Platinum instead of Oil | Oil feed ID not found; Platinum (2062) confirmed live |
 | 2026-03-05 | via_ir = true | Required for DeployLocal.s.sol stack depth |
 | 2026-03-05 | All USDC in custodies | Pool is accounting only. Fees, PnL, deposits all flow to custodies. |
+| 2026-03-05 | Signed int256 funding | Funding can be positive (pay) or negative (receive). Plan's abs() would penalize minority side. |
+| 2026-03-05 | Pool as funding intermediary | Keeps pool accounting in sync. Net zero when both sides exist. Pool keeps residual when imbalanced (GMX pattern). |
+| 2026-03-05 | P2P sweep function | Rounding dust from capped payouts needs explicit cleanup path. |
 
 ## Blockers
 

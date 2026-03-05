@@ -11,7 +11,7 @@ interface ITrading {
         uint256 entryPrice;     // 18 decimals
         uint256 openTimestamp;
         uint256 cumulativeBaseFeeSnapshot;
-        uint256 cumulativeFundingSnapshot;
+        int256 cumulativeFundingSnapshot;
     }
 
     event PositionOpened(bytes32 indexed positionId, address indexed owner, uint16 feedId, bool isLong, uint256 collateral, uint256 sizeUsd, uint256 entryPrice);

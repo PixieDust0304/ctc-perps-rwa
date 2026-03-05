@@ -118,11 +118,7 @@ contract Trading is ITrading, OwnableUpgradeable, UUPSUpgradeable, PausableUpgra
             cumulativeBaseFeeSnapshot: isLong
                 ? custody.cumulativeLongBaseFeePerUnit()
                 : custody.cumulativeShortBaseFeePerUnit(),
-            cumulativeFundingSnapshot: uint256(
-                custody.cumulativeFundingPerUnit() >= 0
-                    ? custody.cumulativeFundingPerUnit()
-                    : -custody.cumulativeFundingPerUnit()
-            )
+            cumulativeFundingSnapshot: custody.cumulativeFundingPerUnit()
         });
 
         // Update custody OI
@@ -171,14 +167,15 @@ contract Trading is ITrading, OwnableUpgradeable, UUPSUpgradeable, PausableUpgra
             pos.isLong
         );
 
-        // Calculate accumulated fees
+        // Calculate accumulated fees and funding
         uint256 accumulatedBaseFee = _calculateAccumulatedBaseFee(pos, custody);
+        int256 accumulatedFunding = _calculateAccumulatedFunding(pos, custody);
 
         // Check liquidation condition
         uint256 effectiveCol = PositionUtils.effectiveCollateral(
             pos.collateral,
             accumulatedBaseFee,
-            0, // funding simplified for v1
+            accumulatedFunding,
             pnl,
             isProfit
         );
@@ -216,14 +213,15 @@ contract Trading is ITrading, OwnableUpgradeable, UUPSUpgradeable, PausableUpgra
             pos.isLong
         );
 
-        // Calculate accumulated base fee
+        // Calculate accumulated base fee and funding
         uint256 accumulatedBaseFee = _calculateAccumulatedBaseFee(pos, custody);
+        int256 accumulatedFunding = _calculateAccumulatedFunding(pos, custody);
 
         // Close fee
         uint256 closeFee = isLiquidation ? 0 : feeManager.calculateOpenCloseFee(pos.sizeUsd);
 
-        // Calculate net payout
-        uint256 payout;
+        // Calculate net payout from PnL only (before funding and fees)
+        uint256 rawPayout;
         if (isProfit) {
             uint256 cappedPnl = PositionUtils.capPayout(
                 pnl,
@@ -231,15 +229,29 @@ contract Trading is ITrading, OwnableUpgradeable, UUPSUpgradeable, PausableUpgra
                 leverage,
                 custody.availableBalance()
             );
-            payout = pos.collateral + cappedPnl;
+            rawPayout = pos.collateral + cappedPnl;
         } else {
-            payout = pnl >= pos.collateral ? 0 : pos.collateral - pnl;
+            rawPayout = pnl >= pos.collateral ? 0 : pos.collateral - pnl;
         }
 
-        // Capture payout before fee deduction for PnL reporting
-        uint256 payoutBeforeFees = payout;
+        // PnL impact to pool: purely from price movement (funding is zero-sum between traders)
+        uint256 payoutBeforeFees = rawPayout;
 
-        // Deduct fees from payout
+        // Apply funding to payout (positive = trader pays, negative = trader receives)
+        uint256 payout;
+        if (accumulatedFunding >= 0) {
+            // Trader pays funding — deduct from payout
+            uint256 fundingOwed = uint256(accumulatedFunding);
+            payout = fundingOwed >= rawPayout ? 0 : rawPayout - fundingOwed;
+        } else {
+            // Trader receives funding — add to payout (capped at custody available)
+            uint256 fundingReceived = uint256(-accumulatedFunding);
+            uint256 availableForFunding = custody.availableBalance();
+            fundingReceived = FixedPointMath.min(fundingReceived, availableForFunding);
+            payout = rawPayout + fundingReceived;
+        }
+
+        // Deduct base fee + close fee from payout
         uint256 totalFees = accumulatedBaseFee + closeFee;
         if (totalFees >= payout) {
             totalFees = payout;
@@ -268,6 +280,12 @@ contract Trading is ITrading, OwnableUpgradeable, UUPSUpgradeable, PausableUpgra
             pool.absorbPnL(pnlImpact);
         }
 
+        // Report funding to pool accounting (pool acts as intermediary between longs and shorts)
+        // Trader pays funding → pool gains; trader receives funding → pool loses. Net is zero-sum.
+        if (accumulatedFunding != 0) {
+            pool.absorbPnL(accumulatedFunding);
+        }
+
         // Clear position
         int256 realizedPnl = isProfit ? int256(pnl) : -int256(pnl);
         delete positions[positionId];
@@ -285,6 +303,23 @@ contract Trading is ITrading, OwnableUpgradeable, UUPSUpgradeable, PausableUpgra
 
         uint256 feePerUnit = currentCumulativeFee - pos.cumulativeBaseFeeSnapshot;
         return pos.sizeUsd.mulFp(feePerUnit);
+    }
+
+    /// @notice Calculate accumulated funding for a position
+    /// @return funding Signed value: positive = trader pays, negative = trader receives
+    function _calculateAccumulatedFunding(
+        Position memory pos,
+        Custody custody
+    ) internal view returns (int256) {
+        int256 currentCumFunding = custody.cumulativeFundingPerUnit();
+        int256 delta = currentCumFunding - pos.cumulativeFundingSnapshot;
+
+        // Longs: positive delta = longs pay (convention matches accumulator)
+        // Shorts: positive delta means shorts receive, so invert
+        int256 signedDelta = pos.isLong ? delta : -delta;
+
+        // Scale by position size
+        return (signedDelta * int256(pos.sizeUsd)) / int256(1e18);
     }
 
     // Admin functions

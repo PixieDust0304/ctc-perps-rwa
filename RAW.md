@@ -74,7 +74,7 @@
 |-----|------|----------|-------------|
 | Open/Close | 0.1% of notional | One-time | Pool (90% LP / 10% protocol) |
 | Base Fee (borrow) | 0-5% per hour | Applied every 15s | Pool (90% LP / 10% protocol) |
-| Funding Rate | Small, imbalance-based | Applied every 15s | Between traders |
+| Funding Rate | Small, imbalance-based | Applied every 15s | Between traders (pool as accounting intermediary) |
 
 ### Base Fee Formula
 - `rate_for_side = (side_OI / total_OI) x 5% per hour`
@@ -89,8 +89,13 @@
 - If longs=90%, shorts=10%: "longs pay for the missing 40% on the short side" (40% = gap from 50/50)
 - Applied every 15 seconds (per block)
 - Small per-interval amount, compounds over time
-- Goes between traders (NOT to pool)
-- Proposed: `funding_rate = (long_OI - short_OI) / (long_OI + short_OI) x max_funding_rate`
+- Zero-sum between traders. Pool acts as accounting intermediary:
+  - Trader pays funding → pool.absorbPnL(+amount) (USDC stays in custody)
+  - Trader receives funding → pool.absorbPnL(-amount) (USDC leaves custody)
+  - Net pool impact is zero when both sides exist. When imbalanced with no counterparty, pool keeps residual as directional risk compensation.
+- Accumulated funding is signed (int256): positive = trader pays, negative = trader receives
+- Longs use cumulative delta as-is; shorts invert the delta
+- Formula: `funding_rate = (long_OI - short_OI) / (long_OI + short_OI) x max_funding_rate`
 
 ## Off-Hours P2P System
 

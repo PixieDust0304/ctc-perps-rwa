@@ -147,11 +147,12 @@ All core contracts: UUPS (ERC-1967) via OpenZeppelin `UUPSUpgradeable` + `Ownabl
 - `uint16 feedId`
 - `uint256 availableBalance, reservedBalance`
 - `uint256 longOpenInterest, shortOpenInterest`
-- `uint256 cumulativeBaseFeePerUnit, cumulativeFundingPerUnit` — GMX-style accumulators
+- `uint256 cumulativeLongBaseFeePerUnit, cumulativeShortBaseFeePerUnit` — GMX-style accumulators
+- `int256 cumulativeFundingPerUnit` — signed: positive = longs pay shorts, negative = shorts pay longs
 - `uint256 lastAccrualTimestamp`
 
 **Trading.sol**
-- `Position` struct: owner, feedId, isLong, collateral, sizeUsd, entryPrice, openTimestamp, fee snapshots
+- `Position` struct: owner, feedId, isLong, collateral, sizeUsd, entryPrice, openTimestamp, `uint256 cumulativeBaseFeeSnapshot`, `int256 cumulativeFundingSnapshot`
 - `mapping(bytes32 => Position) positions`
 - Config: maxLeverage=100, maintenanceMarginBps=3000, openCloseFee=10bps, minPositionOpenTime=120s
 
@@ -192,8 +193,10 @@ fee_owed = position_size * rate_for_side * intervals_elapsed
 **Funding Rate (per 15s interval)**:
 ```
 funding_rate = (long_OI - short_OI) / (long_OI + short_OI) * max_funding_rate
-majority_pays = position_size * funding_rate
+accumulated_funding = (current_cumulative - snapshot) * position_size  (for longs, inverted for shorts)
+positive = trader pays, negative = trader receives
 ```
+Pool acts as intermediary: funding payer's USDC stays in custody (pool gains), funding receiver draws from custody (pool loses). Net zero-sum.
 
 **PnL**:
 ```
@@ -204,9 +207,13 @@ Cap:   max_payout = min(collateral * leverage, custody_available)
 
 **Liquidation**:
 ```
-effective_collateral = initial_collateral - accumulated_fees - abs(funding_owed) + unrealized_pnl
+funding_amount = signed (positive = trader pays, negative = trader receives)
+effective_collateral = initial_collateral - accumulated_fees - funding_amount +/- unrealized_pnl
 liquidatable = effective_collateral < initial_collateral * 30%
 ```
+Note: funding is signed — minority side RECEIVES funding (increases effective collateral, harder to liquidate).
+Pool acts as accounting intermediary: `absorbPnL(funding)`. Net zero-sum across matched positions.
+When no counterparty exists, pool keeps the funding as directional risk compensation.
 
 **CLP Mint/Burn**:
 ```

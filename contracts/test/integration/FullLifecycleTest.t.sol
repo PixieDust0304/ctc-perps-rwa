@@ -291,6 +291,143 @@ contract FullLifecycleTest is TestSetup {
         assertEq(_totalSystemUSDC(), 3_000_000e18, "USDC conservation");
     }
 
+    /// @notice VFR: Solo long pays funding (no shorts to receive), pool keeps it
+    function test_fundingRate_soloLongPaysFundingToPool() public {
+        // LP deposits
+        vm.startPrank(user1);
+        usdc.approve(address(pool), LP_DEPOSIT);
+        pool.deposit(LP_DEPOSIT);
+        vm.stopPrank();
+
+        // Only user2 opens a long — 100% OI imbalance → max funding rate
+        vm.startPrank(user2);
+        usdc.approve(address(trading), 5000e18);
+        trading.openPosition(GOLD_FEED, true, 5000e18, 10e18);
+        vm.stopPrank();
+
+        // Warp 1 hour — accumulate significant funding
+        vm.warp(block.timestamp + 3600 + 1);
+        _updateOraclePrice(GOLD_FEED, GOLD_RAW, block.timestamp, true);
+        marketState.updateState(GOLD_FEED);
+
+        bytes32 posId = keccak256(abi.encodePacked(user2, uint256(1)));
+        uint256 traderBefore = usdc.balanceOf(user2);
+        vm.prank(user2);
+        trading.closePosition(posId);
+        uint256 traderPayout = usdc.balanceOf(user2) - traderBefore;
+
+        // Trader should lose MORE than just base fee — funding adds on top
+        uint256 traderLoss = 5000e18 - traderPayout;
+        // Base fee alone = ~5% of 50k notional = 2500 over 1hr
+        // Funding should add additional loss
+        assertGt(traderLoss, 2500e18, "Funding should increase trader loss beyond base fee");
+
+        // Pool accounting should still match
+        assertApproxEqAbs(
+            pool.totalPoolUSDC(),
+            usdc.balanceOf(address(pool)) + usdc.balanceOf(address(goldCustody)),
+            1,
+            "Pool accounting must match after funding"
+        );
+        assertEq(_totalSystemUSDC(), 3_000_000e18, "USDC conservation");
+    }
+
+    /// @notice VFR: Long and short, balanced OI → zero funding, only base fees
+    function test_fundingRate_balancedOI_zeroFunding() public {
+        vm.startPrank(user1);
+        usdc.approve(address(pool), LP_DEPOSIT);
+        pool.deposit(LP_DEPOSIT);
+        vm.stopPrank();
+
+        // Equal long and short
+        vm.startPrank(user2);
+        usdc.approve(address(trading), 5000e18);
+        trading.openPosition(GOLD_FEED, true, 5000e18, 10e18);
+        vm.stopPrank();
+
+        vm.startPrank(user3);
+        usdc.approve(address(trading), 5000e18);
+        trading.openPosition(GOLD_FEED, false, 5000e18, 10e18);
+        vm.stopPrank();
+
+        // Warp 1 hour
+        vm.warp(block.timestamp + 3600 + 1);
+        _updateOraclePrice(GOLD_FEED, GOLD_RAW, block.timestamp, true);
+        marketState.updateState(GOLD_FEED);
+
+        bytes32 posId1 = keccak256(abi.encodePacked(user2, uint256(1)));
+        bytes32 posId2 = keccak256(abi.encodePacked(user3, uint256(2)));
+
+        uint256 longBefore = usdc.balanceOf(user2);
+        vm.prank(user2);
+        trading.closePosition(posId1);
+        uint256 longPayout = usdc.balanceOf(user2) - longBefore;
+
+        uint256 shortBefore = usdc.balanceOf(user3);
+        vm.prank(user3);
+        trading.closePosition(posId2);
+        uint256 shortPayout = usdc.balanceOf(user3) - shortBefore;
+
+        // With balanced OI and flat price, both should lose roughly equal base fees
+        // Funding should be ~0 (balanced OI → funding rate = 0)
+        uint256 longLoss = 5000e18 - longPayout;
+        uint256 shortLoss = 5000e18 - shortPayout;
+
+        // Losses should be approximately equal (both pay base fee + close fee, no funding)
+        assertApproxEqRel(longLoss, shortLoss, 0.01e18, "Balanced OI: losses should be similar");
+        assertEq(_totalSystemUSDC(), 3_000_000e18, "USDC conservation");
+    }
+
+    /// @notice VFR: Imbalanced OI — dominant side pays more, minority side pays less
+    function test_fundingRate_imbalancedOI_dominantPaysMore() public {
+        vm.startPrank(user1);
+        usdc.approve(address(pool), LP_DEPOSIT);
+        pool.deposit(LP_DEPOSIT);
+        vm.stopPrank();
+
+        // User2: large long (dominant)
+        vm.startPrank(user2);
+        usdc.approve(address(trading), 8000e18);
+        trading.openPosition(GOLD_FEED, true, 8000e18, 10e18);
+        vm.stopPrank();
+
+        // User3: small short (minority)
+        vm.startPrank(user3);
+        usdc.approve(address(trading), 2000e18);
+        trading.openPosition(GOLD_FEED, false, 2000e18, 10e18);
+        vm.stopPrank();
+
+        // Warp 30 minutes
+        vm.warp(block.timestamp + 1800 + 1);
+        _updateOraclePrice(GOLD_FEED, GOLD_RAW, block.timestamp, true);
+        marketState.updateState(GOLD_FEED);
+
+        bytes32 posId1 = keccak256(abi.encodePacked(user2, uint256(1)));
+        bytes32 posId2 = keccak256(abi.encodePacked(user3, uint256(2)));
+
+        uint256 longBefore = usdc.balanceOf(user2);
+        vm.prank(user2);
+        trading.closePosition(posId1);
+        uint256 longPayout = usdc.balanceOf(user2) - longBefore;
+
+        uint256 shortBefore = usdc.balanceOf(user3);
+        vm.prank(user3);
+        trading.closePosition(posId2);
+        uint256 shortPayout = usdc.balanceOf(user3) - shortBefore;
+
+        // Long (dominant side) should pay funding → net loss is higher
+        // Short (minority side) should receive funding → can even profit from flat price
+        // The long loses more than base+close fees because funding is deducted
+        assertLt(longPayout, 8000e18, "Long must lose money (base fee + funding)");
+        uint256 longLoss = 8000e18 - longPayout;
+        // Short can receive MORE than their deposit due to funding income
+        // (flat price + funding received - base fee - close fee)
+        // At minimum, short's total cost should be much less than long's per-notional
+        // Long pays funding, short receives it — so short should be better off than long
+        assertGt(shortPayout, longPayout * 2000 / 8000, "Short should do better per-notional than long");
+        assertEq(_totalSystemUSDC(), 3_000_000e18, "USDC conservation");
+    }
+
     /// @notice Base fee accrual over time -> LP profits
     function test_baseFee_accruesToLP() public {
         // LP deposits
