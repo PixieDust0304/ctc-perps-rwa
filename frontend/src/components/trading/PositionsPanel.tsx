@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useAccount } from "wagmi";
-import { type Address } from "viem";
+import { useAccount, useReadContracts } from "wagmi";
+import { parseUnits, formatEther, type Address } from "viem";
 import toast from "react-hot-toast";
-import { CONTRACTS, TRADING_ABI } from "../../lib/contracts";
+import { CONTRACTS, TRADING_ABI, ERC20_ABI, CUSTODY_ADDRESSES, CUSTODY_ABI } from "../../lib/contracts";
 import { useContractWrite } from "../../hooks/useContractWrite";
 import type { PositionUpdate } from "../../hooks/useWebSocket";
 
@@ -46,6 +46,87 @@ export function PositionsPanel({
   const [p2pPositions, setP2PPositions] = useState<PositionData[]>([]);
   const [historyPositions, setHistoryPositions] = useState<PositionData[]>([]);
   const [loading, setLoading] = useState(false);
+  const [addCollateralId, setAddCollateralId] = useState<string | null>(null);
+  const [addCollateralAmount, setAddCollateralAmount] = useState("");
+
+  // Fetch custody fee state for all feeds with positions
+  const feedIds = [...new Set(tradingPositions.map((p) => p.feedId))];
+  const custodyContracts = feedIds.flatMap((fid) => {
+    const addr = CUSTODY_ADDRESSES[fid as keyof typeof CUSTODY_ADDRESSES] as Address | undefined;
+    if (!addr) return [];
+    return [
+      { address: addr, abi: CUSTODY_ABI, functionName: "longOpenInterest" as const },
+      { address: addr, abi: CUSTODY_ABI, functionName: "shortOpenInterest" as const },
+      { address: addr, abi: CUSTODY_ABI, functionName: "lpLiquidity" as const },
+      { address: addr, abi: CUSTODY_ABI, functionName: "maxBaseFeePerHourBps" as const },
+      { address: addr, abi: CUSTODY_ABI, functionName: "maxFundingRatePerHourBps" as const },
+    ];
+  });
+  const { data: custodyFeeData } = useReadContracts({
+    contracts: custodyContracts.length > 0 ? custodyContracts : [],
+    query: { refetchInterval: 5000 },
+  });
+
+  // Build fee info per feed
+  const feeInfoByFeed = new Map<number, { baseFeeRateLong: number; baseFeeRateShort: number; fundingPerHour: number }>();
+  if (custodyFeeData) {
+    feedIds.forEach((fid, idx) => {
+      const base = idx * 5;
+      const longOI = Number(formatEther((custodyFeeData[base]?.result as bigint) ?? 0n));
+      const shortOI = Number(formatEther((custodyFeeData[base + 1]?.result as bigint) ?? 0n));
+      const lpLiq = Number(formatEther((custodyFeeData[base + 2]?.result as bigint) ?? 0n));
+      const maxBaseFeeBps = Number((custodyFeeData[base + 3]?.result as bigint) ?? 0n);
+      const maxFundingBps = Number((custodyFeeData[base + 4]?.result as bigint) ?? 0n);
+
+      const longUtil = lpLiq > 0 ? Math.min(longOI / lpLiq, 1) : 0;
+      const shortUtil = lpLiq > 0 ? Math.min(shortOI / lpLiq, 1) : 0;
+      const baseFeeRateLong = longUtil * (maxBaseFeeBps / 10000);
+      const baseFeeRateShort = shortUtil * (maxBaseFeeBps / 10000);
+
+      const totalOI = longOI + shortOI;
+      const imbalance = totalOI > 0 ? (longOI - shortOI) / totalOI : 0;
+      const fundingPerHour = imbalance * (maxFundingBps / 10000);
+
+      feeInfoByFeed.set(fid, { baseFeeRateLong, baseFeeRateShort, fundingPerHour });
+    });
+  }
+
+  // Get fee costs for a specific position
+  const getFeeCosts = (pos: PositionData) => {
+    const info = feeInfoByFeed.get(pos.feedId);
+    if (!info) return null;
+    const sizeUsd = Number(pos.sizeUsd) / 1e18;
+    const collateral = Number(pos.collateral) / 1e18;
+    if (collateral === 0) return null;
+
+    const baseFeeRate = pos.isLong ? info.baseFeeRateLong : info.baseFeeRateShort;
+    const baseFeePerHour = sizeUsd * baseFeeRate;
+    // Funding: positive = longs pay. For shorts, sign flips.
+    const fundingCostPerHour = pos.isLong
+      ? info.fundingPerHour * sizeUsd
+      : -info.fundingPerHour * sizeUsd;
+    const totalPerHour = baseFeePerHour + Math.max(fundingCostPerHour, 0);
+    const hoursToLiq = totalPerHour > 0 ? (collateral * 0.9) / totalPerHour : Infinity; // 90% of collateral (10% maint margin)
+
+    // Estimated accumulated fees (if we have openedAt)
+    let accumulatedFees = 0;
+    if (pos.openedAt) {
+      const openedAtMs = pos.openedAt.includes("T")
+        ? new Date(pos.openedAt).getTime()
+        : Number(pos.openedAt) * 1000;
+      const hoursOpen = (Date.now() - openedAtMs) / 3600000;
+      accumulatedFees = totalPerHour * Math.max(hoursOpen, 0);
+    }
+
+    return {
+      baseFeePerHour,
+      fundingCostPerHour: Math.max(fundingCostPerHour, 0),
+      totalPerHour,
+      hoursToLiq,
+      accumulatedFees,
+      effectiveCollateral: collateral - accumulatedFees,
+    };
+  };
 
   const fetchTrading = useCallback(async () => {
     if (!address) return;
@@ -121,6 +202,8 @@ export function PositionsPanel({
         setTradingPositions((prev) =>
           prev.filter((p) => p.positionId !== posId)
         );
+      } else if (update.action === "collateralAdded") {
+        fetchTrading();
       } else if (update.action === "settled") {
         const posId = update.position.positionId as string;
         if (posId) {
@@ -167,6 +250,34 @@ export function PositionsPanel({
     );
   };
 
+  const handleAddCollateral = async (pos: PositionData) => {
+    if (!CONTRACTS.trading || !CONTRACTS.mockUSDC || !addCollateralAmount) return;
+    const amount = parseUnits(addCollateralAmount, 18);
+    await execute(
+      {
+        address: CONTRACTS.mockUSDC as Address,
+        abi: ERC20_ABI,
+        functionName: "approve",
+        args: [CONTRACTS.trading as Address, amount],
+      },
+      "Approving USDC"
+    );
+    const result = await execute(
+      {
+        address: CONTRACTS.trading as Address,
+        abi: TRADING_ABI,
+        functionName: "addCollateral",
+        args: [pos.positionId, amount],
+      },
+      "Adding collateral"
+    );
+    if (result) {
+      setAddCollateralId(null);
+      setAddCollateralAmount("");
+      fetchTrading();
+    }
+  };
+
   const getPnl = (pos: PositionData) => {
     const currentPriceData = prices.find((p) => p.id === pos.feedId);
     if (!currentPriceData || currentPriceData.price <= 0) return null;
@@ -185,7 +296,7 @@ export function PositionsPanel({
     };
   };
 
-  const MAINTENANCE_MARGIN = 0.3;
+  const MAINTENANCE_MARGIN = 0.1;
   const getLiquidationPrice = (pos: PositionData) => {
     const entry = Number(pos.entryPrice) / 1e18;
     const collateral = Number(pos.collateral);
@@ -264,6 +375,7 @@ export function PositionsPanel({
             const sizeUsd = Number(pos.sizeUsd);
             const leverage = collateral > 0 ? sizeUsd / collateral : 0;
             const isOpen = pos.status === "open" || !pos.status;
+            const feeCosts = pos.type === "trading" && isOpen ? getFeeCosts(pos) : null;
 
             return (
               <div
@@ -307,6 +419,11 @@ export function PositionsPanel({
                         {pos.status}
                       </span>
                     )}
+                    {feeCosts && feeCosts.hoursToLiq < 1 && (
+                      <span className="text-xs font-bold px-2 py-0.5 rounded bg-red-900 text-red-400 animate-pulse">
+                        ⚠ LIQ RISK
+                      </span>
+                    )}
                   </div>
                   <div className="flex gap-4 mt-1 text-xs text-gray-400">
                     <span>Size: ${(sizeUsd / 1e18).toFixed(0)}</span>
@@ -323,6 +440,30 @@ export function PositionsPanel({
                       </span>
                     )}
                   </div>
+                  {feeCosts && feeCosts.totalPerHour > 0 && (
+                    <div className="flex gap-4 mt-1 text-xs">
+                      <span className="text-yellow-500">
+                        Fees: ${feeCosts.totalPerHour.toFixed(2)}/hr
+                      </span>
+                      {feeCosts.accumulatedFees > 0 && (
+                        <span className="text-orange-400">
+                          Accrued: ~${feeCosts.accumulatedFees.toFixed(2)}
+                        </span>
+                      )}
+                      {feeCosts.effectiveCollateral < collateral / 1e18 && (
+                        <span className="text-gray-400">
+                          Eff. Col: ${feeCosts.effectiveCollateral.toFixed(2)}
+                        </span>
+                      )}
+                      {feeCosts.hoursToLiq < Infinity && (
+                        <span className={feeCosts.hoursToLiq < 2 ? "text-red-400 font-bold" : "text-orange-400"}>
+                          ~{feeCosts.hoursToLiq < 1
+                            ? `${Math.max(Math.round(feeCosts.hoursToLiq * 60), 0)}min`
+                            : `${feeCosts.hoursToLiq.toFixed(1)}hr`} to fee-liq
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex items-center gap-3">
@@ -354,13 +495,47 @@ export function PositionsPanel({
                     </span>
                   )}
                   {pos.type === "trading" && isOpen && (
-                    <button
-                      onClick={() => handleClose(pos)}
-                      disabled={isPending}
-                      className="px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white text-xs rounded disabled:opacity-50"
-                    >
-                      {isPending ? "..." : "Close"}
-                    </button>
+                    <>
+                      {addCollateralId === pos.positionId ? (
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="number"
+                            value={addCollateralAmount}
+                            onChange={(e) => setAddCollateralAmount(e.target.value)}
+                            placeholder="USDC"
+                            className="w-20 px-2 py-1 bg-gray-700 text-white text-xs rounded border border-gray-600 focus:border-blue-500 outline-none"
+                          />
+                          <button
+                            onClick={() => handleAddCollateral(pos)}
+                            disabled={isPending || !addCollateralAmount}
+                            className="px-2 py-1 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded disabled:opacity-50"
+                          >
+                            {isPending ? "..." : "OK"}
+                          </button>
+                          <button
+                            onClick={() => { setAddCollateralId(null); setAddCollateralAmount(""); }}
+                            className="px-2 py-1 bg-gray-700 hover:bg-gray-600 text-gray-300 text-xs rounded"
+                          >
+                            X
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setAddCollateralId(pos.positionId)}
+                          disabled={isPending}
+                          className="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded disabled:opacity-50"
+                        >
+                          +Col
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleClose(pos)}
+                        disabled={isPending}
+                        className="px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white text-xs rounded disabled:opacity-50"
+                      >
+                        {isPending ? "..." : "Close"}
+                      </button>
+                    </>
                   )}
                 </div>
               </div>

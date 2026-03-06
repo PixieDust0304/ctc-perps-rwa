@@ -3,7 +3,7 @@ import { startFetcher } from "./services/fetcher.js";
 import { pushPrices } from "./services/chainPusher.js";
 import { storePriceTicks, getCandlesAsync, getLatestPrice, getPriceMovement } from "./services/priceStore.js";
 import { detectMarketStateChanges } from "./services/marketStateDetector.js";
-import { initDatabase, queryPositions, queryPositionsByType, getPrisma } from "./services/database.js";
+import { initDatabase, queryPositions, queryPositionsByType, getPrisma, logMarketState } from "./services/database.js";
 import {
   startWebSocketServer,
   broadcastPrices,
@@ -189,6 +189,12 @@ async function main() {
     const stateChanges = detectMarketStateChanges(ticks);
     if (stateChanges.length > 0) {
       broadcastMarketState(stateChanges);
+
+      // Log market state transitions to DB
+      for (const sc of stateChanges) {
+        const tick = ticks.find(t => t.feedId === sc.feedId);
+        logMarketState(sc.feedId, sc.isOpen ? "open" : "closed", tick?.price.toString() ?? null, new Date(sc.timestamp));
+      }
 
       // Handle market opens (P2P settlement with coordinator lock)
       await handleMarketOpenSettlement(stateChanges);

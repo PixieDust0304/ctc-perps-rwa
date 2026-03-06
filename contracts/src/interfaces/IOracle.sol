@@ -9,7 +9,7 @@ interface IOracle {
     }
 
     event PriceUpdated(uint16 indexed feedId, uint256 price, uint256 timestamp, bool fresh);
-    event TrustedSignerUpdated(address oldSigner, address newSigner);
+    event TrustedSignerUpdated(address indexed oldSigner, address indexed newSigner);
 
     function getPrice(uint16 feedId) external view returns (PriceData memory);
     function getPriceIfFresh(uint16 feedId) external view returns (PriceData memory);

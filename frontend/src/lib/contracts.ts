@@ -61,6 +61,16 @@ export const TRADING_ABI = [
     stateMutability: "nonpayable",
   },
   {
+    name: "addCollateral",
+    type: "function",
+    inputs: [
+      { name: "positionId", type: "bytes32" },
+      { name: "amount", type: "uint256" },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
     name: "getPosition",
     type: "function",
     inputs: [{ name: "positionId", type: "bytes32" }],
@@ -196,6 +206,41 @@ export const CUSTODY_ABI = [
   },
   {
     name: "reservedBalance",
+    type: "function",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    name: "lpLiquidity",
+    type: "function",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    name: "longOpenInterest",
+    type: "function",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    name: "shortOpenInterest",
+    type: "function",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    name: "maxBaseFeePerHourBps",
+    type: "function",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    name: "maxFundingRatePerHourBps",
     type: "function",
     inputs: [],
     outputs: [{ name: "", type: "uint256" }],

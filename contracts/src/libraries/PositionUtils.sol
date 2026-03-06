@@ -68,7 +68,7 @@ library PositionUtils {
     /// @notice Check if a position should be liquidated
     /// @param initialCollateral Original collateral
     /// @param currentEffectiveCollateral Effective collateral after fees/pnl
-    /// @param maintenanceMarginBps Maintenance margin in basis points (e.g., 3000 = 30%)
+    /// @param maintenanceMarginBps Maintenance margin in basis points (e.g., 1000 = 10%)
     function isLiquidatable(
         uint256 initialCollateral,
         uint256 currentEffectiveCollateral,

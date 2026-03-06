@@ -50,7 +50,7 @@ contract PoolCustodyTest is TestSetup {
         FeeManager feeManagerImpl = new FeeManager();
         bytes memory fmInit = abi.encodeCall(
             FeeManager.initialize,
-            (admin, 10, 500, 1, 9000) // 0.1% open/close, 5% max base/hr, 0.01% max funding, 90% LP
+            (admin, 10, 5, 5, 9000) // 0.1% open/close, 0.05% max base/hr, 0.05% max funding/hr, 90% LP
         );
         feeManager = FeeManager(address(new ERC1967Proxy(address(feeManagerImpl), fmInit)));
 
@@ -71,7 +71,7 @@ contract PoolCustodyTest is TestSetup {
         Custody impl = new Custody();
         bytes memory init = abi.encodeCall(
             Custody.initialize,
-            (admin, feedId_, address(usdc), address(pool), 500, 1)
+            (admin, feedId_, address(usdc), address(pool), 5, 5)
         );
         return Custody(address(new ERC1967Proxy(address(impl), init)));
     }

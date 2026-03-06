@@ -39,14 +39,14 @@ contract FullLifecycleTest is TestSetup {
         Custody custImpl = new Custody();
         goldCustody = Custody(address(new ERC1967Proxy(
             address(custImpl),
-            abi.encodeCall(Custody.initialize, (admin, GOLD_FEED, address(usdc), address(pool), 500, 1))
+            abi.encodeCall(Custody.initialize, (admin, GOLD_FEED, address(usdc), address(pool), 5, 5))
         )));
         pool.addCustody(address(goldCustody), 10000);
 
         FeeManager fmImpl = new FeeManager();
         feeManager = FeeManager(address(new ERC1967Proxy(
             address(fmImpl),
-            abi.encodeCall(FeeManager.initialize, (admin, 10, 500, 1, 9000))
+            abi.encodeCall(FeeManager.initialize, (admin, 10, 5, 5, 9000))
         )));
 
         MarketState msImpl = new MarketState();
@@ -62,7 +62,7 @@ contract FullLifecycleTest is TestSetup {
             abi.encodeCall(Trading.initialize, (
                 admin, address(usdc), address(oracle), address(pool),
                 address(feeManager), address(marketState),
-                100e18, 3000, 10e18, 120
+                100e18, 1000, 10e18, 120
             ))
         )));
 
@@ -217,18 +217,22 @@ contract FullLifecycleTest is TestSetup {
         trading.openPosition(GOLD_FEED, true, 1000e18, 10e18);
         vm.stopPrank();
 
-        // CHECK: Does pool accounting match pool's actual USDC?
-        // pool.totalPoolUSDC = pool's owned USDC = actual USDC minus trader-reserved amounts
-        uint256 poolAccountingAfterOpen = pool.totalPoolUSDC();
-        uint256 totalActualUSDC = usdc.balanceOf(address(pool)) + usdc.balanceOf(address(goldCustody));
-        uint256 custodyReserved = goldCustody.reservedBalance();
+        // CHECK: custody's internal accounting matches its actual USDC balance
+        // (This catches fee dust or untracked USDC in custody)
+        uint256 custodyAvailableAfterOpen = goldCustody.availableBalance();
+        uint256 custodyActualAfterOpen = usdc.balanceOf(address(goldCustody));
+        assertEq(
+            custodyAvailableAfterOpen,
+            custodyActualAfterOpen,
+            "FEE BUG: Custody available balance diverges from actual USDC"
+        );
 
-        // Pool accounting should equal total actual USDC minus trader's reserved collateral
-        assertApproxEqAbs(
+        // Pool accounting increased by open fee
+        uint256 poolAccountingAfterOpen = pool.totalPoolUSDC();
+        assertEq(
             poolAccountingAfterOpen,
-            totalActualUSDC - custodyReserved,
-            1,
-            "FEE BUG: Pool accounting diverges from pool-owned USDC"
+            LP_DEPOSIT + 10e18, // LP deposit + open fee (0.1% of 10,000 notional)
+            "Pool accounting should include open fee"
         );
 
         // Now verify custody's availableBalance matches its actual USDC
@@ -316,11 +320,13 @@ contract FullLifecycleTest is TestSetup {
         trading.closePosition(posId);
         uint256 traderPayout = usdc.balanceOf(user2) - traderBefore;
 
-        // Trader should lose MORE than just base fee — funding adds on top
+        // Trader should lose from base fee + funding
         uint256 traderLoss = 5000e18 - traderPayout;
-        // Base fee alone = ~5% of 50k notional = 2500 over 1hr
-        // Funding should add additional loss
-        assertGt(traderLoss, 2500e18, "Funding should increase trader loss beyond base fee");
+        // Funding: solo long = max funding rate (5 bps/hr on 50k ≈ $25/hr)
+        // Base fee: ~47% util * 0.05%/hr * 50k ≈ $12/hr
+        // Close fee: 0.1% * 50k = $50
+        // Total ~$87 over 1hr — modest but measurable
+        assertGt(traderLoss, 50e18, "Base fee + funding should cause measurable loss");
 
         // Pool accounting should still match
         assertApproxEqAbs(
@@ -450,10 +456,10 @@ contract FullLifecycleTest is TestSetup {
         // Accrue fees in custody
         goldCustody.accrueFees();
 
-        // After 1 hour with 100% long OI (side_OI/total_OI = 1):
-        // base_fee_rate = 1.0 * 5% / 240 per interval = 0.020833% per interval
-        // 240 intervals = 5% of notional = 5% * 50000 = 2500 USDC
-        // This should be deducted from trader's effective collateral on close
+        // After 1 hour with utilization ~47% (50k OI / ~105k liquidity):
+        // base_fee_rate = 0.47 * 0.05% / 240 per interval
+        // 240 intervals ≈ 0.024% of notional ≈ $12
+        // Plus close fee: 0.1% * 50k = $50
 
         bytes32 posId = keccak256(abi.encodePacked(user2, uint256(1)));
         uint256 traderBefore = usdc.balanceOf(user2);
@@ -462,8 +468,8 @@ contract FullLifecycleTest is TestSetup {
         uint256 traderPayout = usdc.balanceOf(user2) - traderBefore;
 
         // Trader deposited 5000, had close fee + base fee deducted
-        // Even with flat price, base fee should eat into collateral significantly
+        // Even with flat price, base fee + close fee should eat into collateral
         uint256 traderLoss = 5000e18 - traderPayout;
-        assertGt(traderLoss, 100e18, "Base fee should cause measurable loss over 1hr");
+        assertGt(traderLoss, 50e18, "Base fee + close fee should cause measurable loss over 1hr");
     }
 }

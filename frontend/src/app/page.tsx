@@ -6,7 +6,7 @@ import { OrderPanel } from "../components/trading/OrderPanel";
 import { MarketStatusBanner } from "../components/trading/MarketStatusBanner";
 import { PriceChart } from "../components/trading/PriceChart";
 import { PositionsPanel } from "../components/trading/PositionsPanel";
-import { CustodyLiquidity } from "../components/trading/CustodyLiquidity";
+
 import { FaucetButton } from "../components/trading/FaucetButton";
 import { usePrices } from "../hooks/usePrices";
 import { useState } from "react";
@@ -57,9 +57,6 @@ export default function TradingPage() {
         selectedFeedId={selectedFeedId}
         onSelect={setSelectedFeedId}
       />
-
-      {/* Custody Liquidity */}
-      <CustodyLiquidity />
 
       {/* Main Trading Area */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 p-4">

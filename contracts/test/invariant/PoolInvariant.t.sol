@@ -98,13 +98,13 @@ contract PoolInvariantTest is TestSetup {
         Custody custImpl = new Custody();
         goldCustody = Custody(address(new ERC1967Proxy(
             address(custImpl),
-            abi.encodeCall(Custody.initialize, (admin, GOLD_FEED, address(usdc), address(pool), 500, 1))
+            abi.encodeCall(Custody.initialize, (admin, GOLD_FEED, address(usdc), address(pool), 5, 5))
         )));
 
         Custody custImpl2 = new Custody();
         silverCustody = Custody(address(new ERC1967Proxy(
             address(custImpl2),
-            abi.encodeCall(Custody.initialize, (admin, SILVER_FEED, address(usdc), address(pool), 500, 1))
+            abi.encodeCall(Custody.initialize, (admin, SILVER_FEED, address(usdc), address(pool), 5, 5))
         )));
 
         pool.addCustody(address(goldCustody), 5000);

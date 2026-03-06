@@ -3,7 +3,7 @@ import { config } from "../config/index.js";
 import { creditcoinLocal } from "../config/chains.js";
 import { TradingABI, P2PTradingABI } from "../abi/index.js";
 import { logger } from "../utils/logger.js";
-import { getPrisma, persistPosition, updatePositionStatus, queryPositionsByType } from "../services/database.js";
+import { getPrisma, persistPosition, updatePositionStatus, updatePositionCollateral, queryPositionsByType } from "../services/database.js";
 import { broadcastPositionUpdate } from "../services/websocketServer.js";
 import type { Position, P2PPosition } from "../types/index.js";
 
@@ -390,6 +390,35 @@ export function startWatching(): void {
             ...(pos ? serializePosition(pos) : {}),
           });
           logger.info("PositionTracker", `Position closed: ${args.positionId}`);
+        }
+      },
+    });
+
+    client.watchContractEvent({
+      address: tradingAddr,
+      abi: TradingABI,
+      eventName: "CollateralAdded",
+      onLogs: (logs) => {
+        for (const log of logs) {
+          const args = log.args as {
+            positionId: Hex;
+            owner: Hex;
+            amount: bigint;
+            newCollateral: bigint;
+          };
+          const pos = openPositions.get(args.positionId);
+          if (pos) {
+            pos.collateral = args.newCollateral;
+          }
+          updatePositionCollateral(args.positionId, args.newCollateral.toString());
+          broadcastPositionUpdate("collateralAdded", "trading", {
+            positionId: args.positionId,
+            owner: args.owner,
+            amount: args.amount?.toString(),
+            newCollateral: args.newCollateral?.toString(),
+            ...(pos ? serializePosition(pos) : {}),
+          });
+          logger.info("PositionTracker", `Collateral added to ${args.positionId}: +${args.amount}`);
         }
       },
     });

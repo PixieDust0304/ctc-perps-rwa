@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { useAccount } from "wagmi";
-import { parseEther, type Address } from "viem";
-import { CONTRACTS, TRADING_ABI, P2P_TRADING_ABI, ERC20_ABI } from "../../lib/contracts";
+import { useAccount, useReadContracts } from "wagmi";
+import { parseEther, formatEther, type Address } from "viem";
+import { CONTRACTS, TRADING_ABI, P2P_TRADING_ABI, ERC20_ABI, CUSTODY_ABI, CUSTODY_ADDRESSES } from "../../lib/contracts";
 import { useContractWrite } from "../../hooks/useContractWrite";
 
 interface OrderPanelProps {
@@ -28,13 +28,43 @@ export function OrderPanel({
   const leverageNum = parseFloat(leverage) || 1;
   const notional = collateralNum * leverageNum;
   const openFee = notional * 0.001; // 0.1%
+  const collateralAfterFee = collateralNum - openFee;
+  const sizeUsd = collateralAfterFee > 0 ? collateralAfterFee * leverageNum : 0;
   const feePercent = leverageNum * 0.1; // fee as % of collateral
 
+  // 10% maintenance margin
   const liqPrice = currentPrice > 0 && leverageNum > 0
     ? isLong
-      ? currentPrice * (1 - 0.7 / leverageNum)
-      : currentPrice * (1 + 0.7 / leverageNum)
+      ? currentPrice * (1 - 0.9 / leverageNum)
+      : currentPrice * (1 + 0.9 / leverageNum)
     : 0;
+
+  // Fetch custody available liquidity for this feed
+  // Use lpLiquidity (excludes trader collateral) minus reservedBalance for true LP headroom
+  const custodyAddr = CUSTODY_ADDRESSES[feedId as keyof typeof CUSTODY_ADDRESSES];
+  const { data: custodyData } = useReadContracts({
+    contracts: custodyAddr ? [
+      {
+        address: custodyAddr as Address,
+        abi: CUSTODY_ABI,
+        functionName: "lpLiquidity" as const,
+      },
+      {
+        address: custodyAddr as Address,
+        abi: CUSTODY_ABI,
+        functionName: "reservedBalance" as const,
+      },
+    ] : [],
+    query: { refetchInterval: 5000 },
+  });
+
+  const lpLiq = custodyData?.[0]?.result as bigint | undefined;
+  const reservedBal = custodyData?.[1]?.result as bigint | undefined;
+  const availableLiq = lpLiq !== undefined && reservedBal !== undefined
+    ? Number(formatEther(lpLiq > reservedBal ? lpLiq - reservedBal : 0n))
+    : null;
+
+  const exceedsLiquidity = availableLiq !== null && sizeUsd > availableLiq && sizeUsd > 0;
 
   const handleApproveAndOpen = async () => {
     if (!address || collateralNum <= 0) return;
@@ -153,7 +183,7 @@ export function OrderPanel({
       <div className="bg-gray-800 rounded-lg p-3 space-y-1 text-sm">
         <div className="flex justify-between">
           <span className="text-gray-400">Position Size</span>
-          <span className="text-white">${notional.toFixed(2)}</span>
+          <span className="text-white">${sizeUsd.toFixed(2)}</span>
         </div>
         <div className="flex justify-between">
           <span className="text-gray-400">Entry Price</span>
@@ -169,6 +199,14 @@ export function OrderPanel({
             {liqPrice > 0 ? `$${liqPrice.toFixed(2)}` : "\u2014"}
           </span>
         </div>
+        {availableLiq !== null && (
+          <div className="flex justify-between">
+            <span className="text-gray-400">Avail. Liquidity</span>
+            <span className={exceedsLiquidity ? "text-red-400 font-medium" : "text-gray-300"}>
+              ${availableLiq.toFixed(0)}
+            </span>
+          </div>
+        )}
         {feePercent >= 5 && (
           <div className="text-amber-400 text-xs mt-1">
             Warning: Open+close fees = {(feePercent * 2).toFixed(1)}% of
@@ -177,11 +215,18 @@ export function OrderPanel({
         )}
       </div>
 
+      {/* Liquidity error */}
+      {exceedsLiquidity && (
+        <div className="bg-red-900/40 border border-red-700 rounded-lg px-3 py-2 text-red-300 text-sm">
+          Position size (${sizeUsd.toFixed(0)}) exceeds available liquidity (${availableLiq?.toFixed(0)}). Reduce collateral or leverage.
+        </div>
+      )}
+
       <div className="flex-1" />
       {/* Submit Button */}
       <button
         onClick={handleApproveAndOpen}
-        disabled={!isConnected || isPending || collateralNum <= 0}
+        disabled={!isConnected || isPending || collateralNum <= 0 || exceedsLiquidity}
         className={`w-full py-3 rounded-lg font-medium text-white transition-colors ${
           isLong
             ? "bg-green-600 hover:bg-green-700 disabled:bg-green-900"
@@ -192,7 +237,9 @@ export function OrderPanel({
           ? "Connect Wallet"
           : isPending
             ? "Confirming..."
-            : `${isMarketOpen ? "" : "P2P "}${isLong ? "Long" : "Short"} ${notional.toFixed(0)} USD`}
+            : exceedsLiquidity
+              ? "Insufficient Liquidity"
+              : `${isMarketOpen ? "" : "P2P "}${isLong ? "Long" : "Short"} ${sizeUsd.toFixed(0)} USD`}
       </button>
     </div>
   );

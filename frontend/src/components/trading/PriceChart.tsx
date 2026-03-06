@@ -11,7 +11,6 @@ import {
 } from "lightweight-charts";
 
 const INTERVALS = [
-  { label: "15s", interval: "15s", lookbackMs: 15_000 },
   { label: "1m", interval: "1m", lookbackMs: 60_000 },
   { label: "5m", interval: "5m", lookbackMs: 300_000 },
   { label: "10m", interval: "10m", lookbackMs: 600_000 },
@@ -44,7 +43,7 @@ export function PriceChart({
   const seriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   const feedIdRef = useRef(feedId);
 
-  const [selectedIdx, setSelectedIdx] = useState(1); // default 1m
+  const [selectedIdx, setSelectedIdx] = useState(0); // default 1m
   const [movement, setMovement] = useState<{ changePercent: number } | null>(null);
 
   const [priceDirection, setPriceDirection] = useState<"up" | "down" | "flat">("flat");
@@ -137,7 +136,7 @@ export function PriceChart({
       timeScale: {
         borderColor: "#374151",
         timeVisible: true,
-        secondsVisible: selected.interval === "15s",
+        secondsVisible: false,
         rightOffset: 5,
       },
       width: containerRef.current.clientWidth,
@@ -215,7 +214,7 @@ export function PriceChart({
     if (!seriesRef.current || currentPrice <= 0) return;
     if (feedIdRef.current !== feedId) return;
 
-    const intervalMs = selected.interval === "15s" ? 15000 : 60000;
+    const intervalMs = 60000;
     const now = Math.floor(Date.now() / intervalMs) * (intervalMs / 1000);
 
     seriesRef.current.update({

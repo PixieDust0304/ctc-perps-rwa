@@ -10,8 +10,8 @@ import {FeeCalculator} from "../libraries/FeeCalculator.sol";
 /// @notice Central fee configuration and split logic
 contract FeeManager is OwnableUpgradeable, UUPSUpgradeable {
     uint256 public openCloseFeeBps;         // e.g., 10 = 0.1%
-    uint256 public maxBaseFeePerHourBps;    // e.g., 500 = 5%
-    uint256 public maxFundingRatePerIntervalBps; // e.g., 1 = 0.01%
+    uint256 public maxBaseFeePerHourBps;    // e.g., 5 = 0.05%
+    uint256 public maxFundingRatePerHourBps; // e.g., 5 = 0.05%/hr
     uint256 public lpShareBps;              // e.g., 9000 = 90%
     uint256 public feeInterval;             // 15 seconds
 
@@ -26,14 +26,14 @@ contract FeeManager is OwnableUpgradeable, UUPSUpgradeable {
         address owner_,
         uint256 openCloseFeeBps_,
         uint256 maxBaseFeePerHourBps_,
-        uint256 maxFundingRatePerIntervalBps_,
+        uint256 maxFundingRatePerHourBps_,
         uint256 lpShareBps_
     ) external initializer {
         __Ownable_init(owner_);
 
         openCloseFeeBps = openCloseFeeBps_;
         maxBaseFeePerHourBps = maxBaseFeePerHourBps_;
-        maxFundingRatePerIntervalBps = maxFundingRatePerIntervalBps_;
+        maxFundingRatePerHourBps = maxFundingRatePerHourBps_;
         lpShareBps = lpShareBps_;
         feeInterval = 15;
     }
@@ -62,8 +62,8 @@ contract FeeManager is OwnableUpgradeable, UUPSUpgradeable {
     }
 
     function setMaxFundingRatePerIntervalBps(uint256 bps) external onlyOwner {
-        maxFundingRatePerIntervalBps = bps;
-        emit FeeConfigUpdated("maxFundingRatePerIntervalBps", bps);
+        maxFundingRatePerHourBps = bps;
+        emit FeeConfigUpdated("maxFundingRatePerHourBps", bps);
     }
 
     function setLpShareBps(uint256 bps) external onlyOwner {

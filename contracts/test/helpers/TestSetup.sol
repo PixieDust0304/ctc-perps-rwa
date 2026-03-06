@@ -86,7 +86,7 @@ abstract contract TestSetup is Test {
         freshFlags[0] = fresh;
 
         bytes32 messageHash = keccak256(
-            abi.encodePacked(feedIds, prices, timestamps, freshFlags)
+            abi.encode(feedIds, prices, timestamps, freshFlags)
         );
         bytes32 ethSignedHash = MessageHashUtils_toEthSignedMessageHash(messageHash);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(signerPrivateKey, ethSignedHash);
@@ -115,7 +115,7 @@ abstract contract TestSetup is Test {
         feedIds[3] = PLATINUM_FEED; prices[3] = platinumRaw; timestamps[3] = timestamp; freshFlags[3] = fresh;
 
         bytes32 messageHash = keccak256(
-            abi.encodePacked(feedIds, prices, timestamps, freshFlags)
+            abi.encode(feedIds, prices, timestamps, freshFlags)
         );
         bytes32 ethSignedHash = MessageHashUtils_toEthSignedMessageHash(messageHash);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(signerPrivateKey, ethSignedHash);

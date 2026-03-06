@@ -10,3 +10,18 @@ body {
   background: var(--background);
   font-family: system-ui, -apple-system, sans-serif;
 }
+
+@keyframes pnl-float-up {
+  0% {
+    transform: translateY(0) scale(1);
+    opacity: 0.6;
+  }
+  100% {
+    transform: translateY(-120px) scale(0);
+    opacity: 0;
+  }
+}
+
+.animate-pnl-float-up {
+  animation: pnl-float-up 3s ease-out infinite;
+}

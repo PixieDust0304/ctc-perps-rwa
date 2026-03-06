@@ -10,7 +10,7 @@ interface PriceUpdate {
 }
 
 export interface PositionUpdate {
-  action: "opened" | "closed" | "liquidated" | "settled";
+  action: "opened" | "closed" | "liquidated" | "settled" | "collateralAdded";
   positionType: "trading" | "p2p";
   position: Record<string, unknown>;
 }

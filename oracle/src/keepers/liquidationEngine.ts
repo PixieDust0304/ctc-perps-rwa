@@ -9,7 +9,7 @@ import { isSettlementInProgress } from "./keeperCoordinator.js";
 import type { PriceTick } from "../types/index.js";
 import type { CustodyState } from "../types/index.js";
 
-const MAINTENANCE_MARGIN_BPS = 3000n; // 30%
+const MAINTENANCE_MARGIN_BPS = 1000n; // 10% — matches on-chain maintenanceMarginBps
 const BPS_DENOMINATOR = 10000n;
 const PRECISION = 10n ** 18n;
 

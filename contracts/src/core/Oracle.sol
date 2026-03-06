@@ -72,7 +72,7 @@ contract Oracle is IOracle, OwnableUpgradeable, UUPSUpgradeable, PausableUpgrade
         bytes calldata signature
     ) internal view {
         bytes32 messageHash = keccak256(
-            abi.encodePacked(feedIds, rawPrices, timestamps, freshFlags)
+            abi.encode(feedIds, rawPrices, timestamps, freshFlags)
         );
         bytes32 ethSignedHash = messageHash.toEthSignedMessageHash();
         address recovered = ethSignedHash.recover(signature);

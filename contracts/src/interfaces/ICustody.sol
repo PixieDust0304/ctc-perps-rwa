@@ -15,4 +15,5 @@ interface ICustody {
     function addLiquidity(uint256 amount) external;
     function removeLiquidity(uint256 amount) external returns (uint256);
     function payTrader(address trader, uint256 amount) external;
+    function increaseCollateral(uint256 amount) external;
 }

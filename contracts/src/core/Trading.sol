@@ -38,7 +38,7 @@ contract Trading is ITrading, OwnableUpgradeable, UUPSUpgradeable, PausableUpgra
 
     // Config
     uint256 public maxLeverage;              // e.g., 100e18
-    uint256 public maintenanceMarginBps;     // e.g., 3000 = 30%
+    uint256 public maintenanceMarginBps;     // e.g., 1000 = 10%
     uint256 public minPositionUsd;           // e.g., 10e18 = $10
     uint256 public minPositionOpenTime;      // e.g., 120 seconds
 
@@ -85,9 +85,6 @@ contract Trading is ITrading, OwnableUpgradeable, UUPSUpgradeable, PausableUpgra
         require(marketState.isMarketOpen(feedId), "Trading: market closed");
         require(leverage >= 1e18 && leverage <= maxLeverage, "Trading: invalid leverage");
 
-        uint256 sizeUsd = collateral.mulFp(leverage);
-        require(sizeUsd >= minPositionUsd, "Trading: below min size");
-
         address custodyAddr = feedCustody[feedId];
         require(custodyAddr != address(0), "Trading: no custody");
         Custody custody = Custody(custodyAddr);
@@ -95,13 +92,20 @@ contract Trading is ITrading, OwnableUpgradeable, UUPSUpgradeable, PausableUpgra
         // Get fresh oracle price
         IOracle.PriceData memory priceData = oracle.getPriceIfFresh(feedId);
 
-        // Calculate and deduct open fee
-        uint256 openFee = feeManager.calculateOpenCloseFee(sizeUsd);
+        // Calculate and deduct open fee from collateral BEFORE computing size
+        // This ensures sizeUsd = collateralAfterFee * leverage (exact leverage, no silent bump)
+        uint256 prelimSize = collateral.mulFp(leverage);
+        uint256 openFee = feeManager.calculateOpenCloseFee(prelimSize);
         require(collateral > openFee, "Trading: fee exceeds collateral");
         uint256 collateralAfterFee = collateral - openFee;
+        uint256 sizeUsd = collateralAfterFee.mulFp(leverage);
+        require(sizeUsd >= minPositionUsd, "Trading: below min size");
 
         // Transfer collateral from trader to custody
         usdc.safeTransferFrom(msg.sender, custodyAddr, collateral);
+
+        // Accrue fees before reading snapshots (ensures accumulators are current)
+        custody.accrueFees();
 
         // Record position
         positionCounter++;
@@ -121,7 +125,7 @@ contract Trading is ITrading, OwnableUpgradeable, UUPSUpgradeable, PausableUpgra
             cumulativeFundingSnapshot: custody.cumulativeFundingPerUnit()
         });
 
-        // Update custody OI
+        // Update custody OI (accrueFees inside is a no-op since we just accrued above)
         custody.increasePosition(isLong, sizeUsd, collateralAfterFee);
 
         // Track fee USDC in custody's available balance (fee was transferred with collateral)
@@ -188,6 +192,28 @@ contract Trading is ITrading, OwnableUpgradeable, UUPSUpgradeable, PausableUpgra
         _closePosition(positionId, pos, true);
 
         emit PositionLiquidated(positionId, pos.owner, msg.sender);
+    }
+
+    /// @notice Add collateral to an existing position
+    function addCollateral(bytes32 positionId, uint256 amount) external nonReentrant whenNotPaused {
+        Position storage pos = positions[positionId];
+        require(pos.collateral > 0, "Trading: already closed");
+        require(pos.owner == msg.sender, "Trading: not owner");
+        require(amount > 0, "Trading: zero amount");
+
+        address custodyAddr = feedCustody[pos.feedId];
+        require(custodyAddr != address(0), "Trading: no custody");
+
+        // Transfer USDC from trader to custody
+        usdc.safeTransferFrom(msg.sender, custodyAddr, amount);
+
+        // Update custody balances (accrueFees inside)
+        Custody(custodyAddr).increaseCollateral(amount);
+
+        // Update position collateral
+        pos.collateral += amount;
+
+        emit CollateralAdded(positionId, msg.sender, amount, pos.collateral);
     }
 
     /// @notice Get a position's data
@@ -290,7 +316,9 @@ contract Trading is ITrading, OwnableUpgradeable, UUPSUpgradeable, PausableUpgra
         int256 realizedPnl = isProfit ? int256(pnl) : -int256(pnl);
         delete positions[positionId];
 
-        emit PositionClosed(positionId, pos.owner, realizedPnl);
+        if (!isLiquidation) {
+            emit PositionClosed(positionId, pos.owner, realizedPnl);
+        }
     }
 
     function _calculateAccumulatedBaseFee(

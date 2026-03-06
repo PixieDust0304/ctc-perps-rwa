@@ -2,7 +2,7 @@
 
 ## Context
 
-Building a commodities perpetual futures platform on CreditCoin chain. Pool-vs-traders model during market hours, P2P speculation during off-hours. 4 markets (Gold, Silver, Copper, Platinum) with Autonom RWA oracle. Localnet only for v1.
+Building a commodities perpetual futures platform on CreditCoin chain. Pool-vs-traders model during market hours, P2P speculation during off-hours. 4 markets (Gold, Silver, Crude Oil, Platinum) with Autonom RWA oracle. Localnet only for v1.
 
 ## Monorepo Structure
 
@@ -29,7 +29,7 @@ ctc-perps/
         CLP.sol                   # LP receipt token, UUPS
         CPERP.sol                 # Governance token, standard ERC-20
       core/
-        Oracle.sol                # Price storage + ECDSA verification, UUPS
+        Oracle.sol                # Price storage + ECDSA verification (abi.encode), UUPS
         Pool.sol                  # Single pool, LP deposit/withdraw, UUPS
         Custody.sol               # Per-commodity custody (deployed 4x), UUPS
         Trading.sol               # Market-hours trading engine, UUPS
@@ -47,26 +47,28 @@ ctc-perps/
       invariant/                  # Property-based invariant tests
       helpers/
         TestSetup.sol
-        MockOracle.sol
     foundry.toml
-    foundry.lock
-  oracle/                 # TypeScript - Oracle + Keepers
+  oracle/                 # TypeScript - Oracle + Keepers + DB
     src/
       config/
         index.ts                  # env vars, chain config, feed IDs
         chains.ts                 # CreditCoin chain definitions
       services/
         fetcher.ts                # Autonom API polling (0.5s)
-        priceStore.ts             # PostgreSQL OHLCV writer
-        chainPusher.ts            # Signs + submits prices onchain
-        marketStateDetector.ts    # fresh flag transitions per feed
-        websocketServer.ts        # WS server for frontend
+        priceStore.ts             # OHLCV aggregation, in-memory + Prisma persistence
+        chainPusher.ts            # Signs (abi.encode + ECDSA) + submits prices onchain
+        marketStateDetector.ts    # fresh flag transitions with debounce + cooldown
+        websocketServer.ts        # WS server: prices, market state, position updates
+        database.ts               # Prisma client: ticks, candles, positions, market state, events
       keepers/
-        mainKeeper.ts             # Market-hours liquidation (0.5s)
-        marketOpenKeeper.ts       # Off-hours settlement at market open
+        liquidationEngine.ts      # Off-chain pre-check + parallel liquidate()
+        feeAccrualKeeper.ts       # Custody.accrueFees() every 15s
+        p2pSettlementKeeper.ts    # Batch settle at market open (50/tx + sweep)
         keeperCoordinator.ts      # No overlap between keepers
+        positionTracker.ts        # DB-backed startup + live event watching (Trading + P2P)
+        positionReconciler.ts     # 30-min chain-vs-DB reconciliation sweep
       utils/
-        signing.ts
+        signing.ts                # encodeAbiParameters + ECDSA wallet
         logger.ts
         retry.ts
       types/
@@ -85,10 +87,11 @@ ctc-perps/
         governance/page.tsx       # DAO proposals
       components/
         trading/
-          TradingView.tsx         # TradingView Lightweight Charts
+          PriceChart.tsx          # Lightweight Charts v4 (1m-1Y intervals)
           OrderPanel.tsx          # Open position form
-          PositionList.tsx        # Active positions table
-          MarketSelector.tsx      # Gold/Silver/Copper/Platinum tabs
+          PositionList.tsx        # Active positions (via API, WS updates)
+          P2PPositionList.tsx     # P2P positions (via API, WS updates)
+          MarketSelector.tsx      # Asset tabs with liquidity tooltip on hover
           MarketStatusBanner.tsx  # OPEN/CLOSED + P2P warning
         pool/
           DepositForm.tsx
@@ -98,31 +101,16 @@ ctc-perps/
           ProposalList.tsx
           ProposalForm.tsx
           VoteButton.tsx
-        common/
-          ConnectWallet.tsx
-          Header.tsx
       hooks/
-        useWebSocket.ts
-        usePrices.ts
-        useMarketState.ts
-        usePositions.ts
-        usePool.ts
-        useTrading.ts
+        usePrices.ts              # WebSocket: prices, market state, positions
       lib/
-        chains.ts                 # defineChain for CreditCoin
-        contracts.ts              # Addresses + ABIs
+        contracts.ts              # Addresses + ABIs + feed config
         wagmiConfig.ts            # wagmi + RainbowKit config
-        chartDataProvider.ts      # OHLCV from API -> chart
-      types/
-        index.ts
     package.json
     next.config.js
     tailwind.config.js
-  database/               # PostgreSQL schema reference
-    init.sql
-  RAW.md                  # Raw design decisions & cross-checks
-  PLAN.md                 # This file
-  STATUS.md               # Build progress tracker
+  start.sh                  # One-command startup (PostgreSQL + Anvil + deploy + oracle + frontend)
+  .addresses.json           # Deployed contract addresses (generated)
 ```
 
 ## Contract Architecture
@@ -135,38 +123,46 @@ All core contracts: UUPS (ERC-1967) via OpenZeppelin `UUPSUpgradeable` + `Ownabl
 **Oracle.sol**
 - `mapping(uint16 => PriceData) prices` — feed_id => {price(18dec), timestamp, fresh}
 - `address trustedSigner` — ECDSA signer
-- `uint256 stalenessThreshold` — 10 seconds
+- `uint256 stalenessThreshold` — 210 seconds
+- Signature verification uses `abi.encode` (not `encodePacked`) to prevent hash collisions with dynamic arrays
 
 **Pool.sol**
 - `address usdc, clpToken, protocolFeeReceiver`
 - `uint256 totalPoolUSDC`
 - `address[] custodies` — 4 custody contract addresses
 - `mapping(address => uint256) custodyAllocationBps` — DAO-set ratios
+- Checks-effects-interactions: state updated before external calls in withdraw()
 
 **Custody.sol** (deployed 4x)
 - `uint16 feedId`
 - `uint256 availableBalance, reservedBalance`
 - `uint256 longOpenInterest, shortOpenInterest`
+- `uint256 totalTraderCollateral` — tracks trader deposits separately from LP liquidity
 - `uint256 cumulativeLongBaseFeePerUnit, cumulativeShortBaseFeePerUnit` — GMX-style accumulators
 - `int256 cumulativeFundingPerUnit` — signed: positive = longs pay shorts, negative = shorts pay longs
 - `uint256 lastAccrualTimestamp`
+- `lpLiquidity()` view: returns `availableBalance - totalTraderCollateral` (fee rate denominator)
 
 **Trading.sol**
 - `Position` struct: owner, feedId, isLong, collateral, sizeUsd, entryPrice, openTimestamp, `uint256 cumulativeBaseFeeSnapshot`, `int256 cumulativeFundingSnapshot`
 - `mapping(bytes32 => Position) positions`
-- Config: maxLeverage=100, maintenanceMarginBps=3000, openCloseFee=10bps, minPositionOpenTime=120s
+- Config: maxLeverage=100x, maintenanceMarginBps=1000 (10%), openCloseFee=10bps (0.1%), minPositionOpenTime=300s
+- Fee-then-size model: `prelimSize = collateral × leverage`, `openFee = prelimSize × feeBps`, `sizeUsd = (collateral - openFee) × leverage`
 
 **P2PTrading.sol**
 - `P2PPosition` struct: same as Position + entryVammPrice, isSettled
 - `mapping(uint16 => uint256) p2pEscrowBalance` — per-feed P2P pool
 - `mapping(uint16 => uint256) p2pLongOI, p2pShortOI`
+- Checks-effects-interactions: `pos.isSettled = true` before USDC transfers
+- minPositionOpenTime = 10s (separate from market-hours 300s)
+- Same fee-then-size model as Trading
 
 **VAMM.sol**
 - `VirtualPool` struct: virtualBase, virtualQuote, k, depthMultiplier, active
 - `mapping(uint16 => VirtualPool) vamms`
 
 **FeeManager.sol**
-- `maxBaseFeePerHourBps=500, maxFundingRatePerInterval, feeInterval=15, lpShareBps=9000`
+- `openCloseFeeBps=10 (0.1%), maxBaseFeePerHourBps=500 (5%), maxFundingRatePerIntervalBps=1, lpShareBps=9000 (90%)`
 
 **Governance.sol**
 - `Proposal` struct: proposer, callData, target, forVotes, againstVotes, deadline, executed
@@ -177,18 +173,28 @@ All core contracts: UUPS (ERC-1967) via OpenZeppelin `UUPSUpgradeable` + `Ownabl
 | Caller | Can Call |
 |--------|---------|
 | Anyone | openPosition, closePosition, liquidate, openP2PPosition, closeP2PPosition, deposit, withdraw |
-| Oracle Keeper | updatePrices (with valid signature) |
-| Market Open Keeper | settleP2PBatch |
+| Oracle Keeper | updatePrices (with valid ECDSA signature) |
+| Settlement Keeper | settleP2PBatch |
 | MarketState | initializeVAMM, deactivateVAMM |
 | Governance (DAO) | ALL admin functions, upgrades |
 
 ### Key Formulas
 
-**Base Fee (per 15s interval)**:
+**Fee-then-Size Model (open position)**:
 ```
-rate_for_side = (side_OI / total_OI) * 5% / 240
+prelimSize = collateral × leverage
+openFee = prelimSize × feeBps / 10000
+collateralAfterFee = collateral - openFee
+sizeUsd = collateralAfterFee × leverage     ← trader gets exact requested leverage
+```
+
+**Base Fee (per 15s interval, utilization-based)**:
+```
+lpLiquidity = availableBalance - totalTraderCollateral
+rate_for_side = (side_OI / lpLiquidity) * maxBaseFee / 240
 fee_owed = position_size * rate_for_side * intervals_elapsed
 ```
+Note: uses LP-only liquidity (excludes trader collateral) to prevent fee rate suppression.
 
 **Funding Rate (per 15s interval)**:
 ```
@@ -200,20 +206,18 @@ Pool acts as intermediary: funding payer's USDC stays in custody (pool gains), f
 
 **PnL**:
 ```
-Long:  pnl = collateral * leverage * (current_price - entry_price) / entry_price
-Short: pnl = collateral * leverage * (entry_price - current_price) / entry_price
-Cap:   max_payout = min(collateral * leverage, custody_available)
+Long:  pnl = sizeUsd * (current_price - entry_price) / entry_price
+Short: pnl = sizeUsd * (entry_price - current_price) / entry_price
+Cap:   max_payout = min(sizeUsd, custody_available)
 ```
 
 **Liquidation**:
 ```
 funding_amount = signed (positive = trader pays, negative = trader receives)
 effective_collateral = initial_collateral - accumulated_fees - funding_amount +/- unrealized_pnl
-liquidatable = effective_collateral < initial_collateral * 30%
+liquidatable = effective_collateral < initial_collateral * 10%
 ```
-Note: funding is signed — minority side RECEIVES funding (increases effective collateral, harder to liquidate).
-Pool acts as accounting intermediary: `absorbPnL(funding)`. Net zero-sum across matched positions.
-When no counterparty exists, pool keeps the funding as directional risk compensation.
+Note: 10% maintenance margin (1000 bps). At 100x leverage, liquidation triggers at ~0.9% adverse move.
 
 **CLP Mint/Burn**:
 ```
@@ -227,7 +231,7 @@ usdc_to_return = (clp_burned / clp_total_supply) * total_pool_usdc
 model PriceTick {
   id        BigInt   @id @default(autoincrement())
   feedId    Int
-  price     Decimal  @db.Decimal(38, 18)
+  price     Decimal  @db.Decimal(78, 0)
   fresh     Boolean
   timestamp DateTime
   @@index([feedId, timestamp])
@@ -236,12 +240,12 @@ model PriceTick {
 model Candle {
   id        BigInt   @id @default(autoincrement())
   feedId    Int
-  interval  String   // "15s", "1m", "5m", "15m", "1h"
-  open      Decimal  @db.Decimal(38, 18)
-  high      Decimal  @db.Decimal(38, 18)
-  low       Decimal  @db.Decimal(38, 18)
-  close     Decimal  @db.Decimal(38, 18)
-  volume    Decimal  @db.Decimal(38, 18) @default(0)
+  interval  String   // "1m", "5m", "15m", "1h"
+  open      Decimal  @db.Decimal(78, 0)
+  high      Decimal  @db.Decimal(78, 0)
+  low       Decimal  @db.Decimal(78, 0)
+  close     Decimal  @db.Decimal(78, 0)
+  volume    Decimal  @db.Decimal(78, 0) @default(0)
   timestamp DateTime
   @@unique([feedId, interval, timestamp])
 }
@@ -249,110 +253,45 @@ model Candle {
 model MarketStateLog {
   id        BigInt   @id @default(autoincrement())
   feedId    Int
-  state     String   // "open", "closing", "closed", "opening"
-  price     Decimal? @db.Decimal(38, 18)
+  state     String   // "open", "closed"
+  price     Decimal? @db.Decimal(78, 0)
   timestamp DateTime
+}
+
+model PositionRecord {
+  positionId  String   @id           // bytes32 hex
+  type        String                  // "trading" | "p2p"
+  owner       String                  // address (lowercase)
+  feedId      Int
+  isLong      Boolean
+  collateral  Decimal  @db.Decimal(78, 0)
+  sizeUsd     Decimal  @db.Decimal(78, 0)
+  entryPrice  Decimal  @db.Decimal(78, 0)
+  status      String   @default("open") // "open" | "closed" | "liquidated" | "settled"
+  realizedPnl Decimal? @db.Decimal(78, 0)
+  openedAt    DateTime
+  closedAt    DateTime?
+  txHash      String?
+  closeTxHash String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  @@index([owner, status])
+  @@index([feedId, status])
+  @@index([status])
 }
 
 model KeeperEvent {
   id           BigInt   @id @default(autoincrement())
-  keeperType   String   // "main", "market_open"
+  keeperType   String   // "reconciler", "liquidation", "settlement"
   feedId       Int
-  action       String   // "liquidation", "settlement"
+  action       String
   positionId   String
   txHash       String?
-  status       String   // "pending", "success", "failed"
+  status       String   // "success", "failed"
   errorMessage String?
   createdAt    DateTime @default(now())
 }
 ```
-
-## Build Phases
-
-### Phase 1: Foundation
-- Restructure repo into monorepo
-- Install OpenZeppelin upgradeable contracts
-- Write: FixedPointMath, PriceUtils, MockUSDC, CLP, CPERP, Oracle
-- Unit tests for all above
-- **Exit**: Tokens deploy on Anvil. Oracle accepts/rejects signed price updates.
-
-### Phase 2: Pool & Custody
-- Write: Pool, WaterfallWithdraw, Custody, FeeManager, MarketState
-- Integration: Pool deploys 4 Custodies
-- Unit tests: deposit, withdraw waterfall, fee accrual math
-- **Exit**: LP deposit/withdraw works. Fee accumulators update correctly.
-
-### Phase 3: Market-Hours Trading
-- Write: Trading (openPosition, closePosition, liquidate)
-- Wire to Custody, Oracle, FeeManager
-- PnL with all caps, liquidation check, 120s timer
-- Unit + integration tests: multiple traders, OI tracking, custody balance changes
-- **Exit**: Full trading lifecycle works. Fees accrue. PnL capped. Liquidation triggers correctly.
-
-### Phase 4: Off-Hours P2P
-- Write: VAMM, P2PTrading
-- VAMM price impact, P2P open/close, base fee to main pool, funding between P2P traders
-- settleAllAtMarketOpen batch function
-- Wire MarketState transitions to VAMM
-- Integration test: full off-hours cycle
-- **Exit**: Complete off-hours lifecycle. Settlement handles all edge cases.
-
-### Phase 5: Governance
-- Write: Governance (propose, vote, execute)
-- Wire to all admin functions
-- **Exit**: DAO can change every admin parameter.
-
-### Phase 6: Oracle Service
-- Initialize TypeScript project with Prisma
-- Build: Fetcher, PriceStore, ChainPusher, MarketStateDetector, WebSocket server
-- Build: MainKeeper, MarketOpenKeeper, KeeperCoordinator
-- REST API for candle data
-- **Exit**: Oracle runs continuously. Prices flow Autonom -> chain. Keepers work. WS broadcasts.
-
-### Phase 7: Frontend
-- Initialize Next.js + Tailwind + wagmi + viem + RainbowKit
-- CreditCoin chain config (defineChain)
-- Chart, trading panel, position management, LP interface, market status UI, governance
-- **Exit**: Full trading UI works with wallet connection and real-time updates.
-
-### Phase 8: Integration & Deployment
-- DeployLocal.s.sol deployment script
-- Startup script: Anvil + deploy + PostgreSQL + oracle + frontend
-- E2E testing, gas optimization
-- **Exit**: Single command starts entire stack locally.
-
-## Testing Strategy
-
-### Unit Tests (forge test)
-- Oracle: signature verification, staleness, fresh flag
-- Pool: CLP mint/burn math, waterfall withdrawal edge cases
-- Custody: balance tracking, OI updates
-- Trading: PnL calculation, fee deduction, liquidation threshold, 120s timer
-- FeeManager: accumulator math (hourly/240 per interval), 90/10 split
-- VAMM: price impact proportional to size, k-invariant maintained
-- P2PTrading: escrow accounting, settlement pro-rata, negative equity capped
-- Governance: quorum, majority, execution
-
-### Integration Tests
-- FullLifecycle: deposit LP -> trade -> accrue fees -> close -> withdraw shows fee income
-- MarketTransition: market hours -> close -> P2P -> open -> settlement -> main resumes
-- LiquidationScenarios: various leverages, correct trigger prices
-- CustodyDrain: winning traders drain custody -> new positions fail -> waterfall handles empty
-
-### Invariant Tests
-- totalPoolUSDC == sum(custody balances) always
-- CLP.totalSupply > 0 implies totalPoolUSDC > 0
-- position.collateral > 0 for all open positions
-- p2pEscrowBalance >= sum(P2P collateral) per feed
-
-### Oracle Service Tests
-- Unit: mocked Autonom responses (Vitest)
-- Integration: real Anvil chain
-- WebSocket: message format and frequency
-
-### Frontend Tests
-- Component tests (React Testing Library)
-- E2E (Playwright against local stack)
 
 ## Key Architecture Decisions
 
@@ -363,7 +302,12 @@ model KeeperEvent {
 | Separate P2PTrading contract | Different pricing, escrow, settlement from main Trading |
 | VAMM as separate contract | Independently upgradeable, clean interface |
 | MarketState as separate contract | Single source of truth for per-feed state |
-| Prisma ORM | Mature migrations, auto-generated TS types |
+| abi.encode for Oracle signatures | Prevents hash collisions with dynamic arrays (encodePacked risk) |
+| Fee-then-size model | Deduct open fee from collateral first so sizeUsd reflects exact leverage |
+| totalTraderCollateral tracking | Prevents trader deposits from inflating LP liquidity and suppressing fees |
+| 10% maintenance margin | Industry standard for commodity perps (30% was too aggressive) |
+| PostgreSQL managed by start.sh | Only runs when protocol runs; no background processes on idle machine |
+| DB position lifecycle | Full open→close with PnL, tx hashes; 30-min reconciliation catches missed events |
 | 18-decimal fixed point everywhere | Matches ERC-20, avoids conversion errors |
 | Batch settlement function | Gas efficiency for market-open keeper |
 
@@ -371,10 +315,12 @@ model KeeperEvent {
 
 | Risk | Mitigation |
 |------|------------|
-| Oracle downtime | 10s staleness -> protocol pause; admin emergency override |
-| VAMM whale manipulation | Depth multiplier tuning, 120s min open, UI warnings |
+| Oracle downtime | 210s staleness → protocol pause; admin emergency override |
+| VAMM whale manipulation | Depth multiplier tuning, 10s min open (P2P), UI warnings |
 | Settlement gas costs | Batch function with configurable batch size, keeper retries |
 | Reentrancy | ReentrancyGuard + checks-effects-interactions pattern |
 | Fee accumulator overflow | uint256 max ~1.15e77; 5%/hr for 100 years = ~4.38e6 — safe |
-| Front-running oracle | 120s min open time; 15s block time reduces MEV |
+| Front-running oracle | 300s min open time (market hours); 2s block time reduces MEV |
 | Pool drain by winning traders | Payout capped at custody balance; consider ADL for v2 |
+| Trader collateral inflating LP metrics | totalTraderCollateral tracked separately; fee rate uses LP-only liquidity |
+| DB-chain desync | 30-min reconciler verifies all open positions against chain state |

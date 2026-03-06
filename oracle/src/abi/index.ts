@@ -73,6 +73,17 @@ export const TradingABI = [
     ],
     anonymous: false,
   },
+  {
+    type: "event",
+    name: "CollateralAdded",
+    inputs: [
+      { name: "positionId", type: "bytes32", indexed: true },
+      { name: "owner", type: "address", indexed: true },
+      { name: "amount", type: "uint256", indexed: false },
+      { name: "newCollateral", type: "uint256", indexed: false },
+    ],
+    anonymous: false,
+  },
 ] as const;
 
 export const P2PTradingABI = [

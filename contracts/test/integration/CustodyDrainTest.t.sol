@@ -36,14 +36,14 @@ contract CustodyDrainTest is TestSetup {
         Custody custImpl = new Custody();
         goldCustody = Custody(address(new ERC1967Proxy(
             address(custImpl),
-            abi.encodeCall(Custody.initialize, (admin, GOLD_FEED, address(usdc), address(pool), 500, 1))
+            abi.encodeCall(Custody.initialize, (admin, GOLD_FEED, address(usdc), address(pool), 5, 5))
         )));
         pool.addCustody(address(goldCustody), 10000);
 
         FeeManager fmImpl = new FeeManager();
         feeManager = FeeManager(address(new ERC1967Proxy(
             address(fmImpl),
-            abi.encodeCall(FeeManager.initialize, (admin, 10, 500, 1, 9000))
+            abi.encodeCall(FeeManager.initialize, (admin, 10, 5, 5, 9000))
         )));
 
         MarketState msImpl = new MarketState();
@@ -59,7 +59,7 @@ contract CustodyDrainTest is TestSetup {
             abi.encodeCall(Trading.initialize, (
                 admin, address(usdc), address(oracle), address(pool),
                 address(feeManager), address(marketState),
-                100e18, 3000, 10e18, 120
+                100e18, 1000, 10e18, 120
             ))
         )));
 
@@ -82,10 +82,10 @@ contract CustodyDrainTest is TestSetup {
 
     /// @notice Winning trader's payout is capped by custody available balance
     function test_payoutCappedByCustody() public {
-        // Small LP deposit
+        // LP deposit must cover sizeUsd reservation (5k collateral * 10x = 50k size)
         vm.startPrank(user1);
-        usdc.approve(address(pool), 10_000e18);
-        pool.deposit(10_000e18);
+        usdc.approve(address(pool), 50_000e18);
+        pool.deposit(50_000e18);
         vm.stopPrank();
 
         // User2 opens large leveraged position
@@ -101,8 +101,7 @@ contract CustodyDrainTest is TestSetup {
         marketState.updateState(GOLD_FEED);
 
         // Trader's theoretical PnL: 20% * 10x * 4950 = 9900 profit
-        // But custody only has ~15000 available (10k LP + 5k trader - some reserved)
-        // Payout should be capped
+        // But custody available is limited — payout should be capped
         bytes32 posId = keccak256(abi.encodePacked(user2, uint256(1)));
         uint256 traderBefore = usdc.balanceOf(user2);
         vm.prank(user2);
@@ -120,10 +119,10 @@ contract CustodyDrainTest is TestSetup {
     function test_custodyDrain_lpWithdrawsRemainder() public {
         uint256 systemBefore = _totalSystemUSDC();
 
-        // LP deposits
+        // LP deposit must cover sizeUsd reservation for both positions (2 * 10k * 10x = 200k)
         vm.startPrank(user1);
-        usdc.approve(address(pool), 50_000e18);
-        pool.deposit(50_000e18);
+        usdc.approve(address(pool), 200_000e18);
+        pool.deposit(200_000e18);
         vm.stopPrank();
 
         // Two large positions

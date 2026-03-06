@@ -1,4 +1,4 @@
-import { createWalletClient, http, encodePacked, keccak256, type Hex } from "viem";
+import { createWalletClient, http, encodeAbiParameters, parseAbiParameters, keccak256, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { creditcoinLocal } from "../config/chains.js";
 import { config } from "../config/index.js";
@@ -28,31 +28,15 @@ export async function signPriceBatch(
 ): Promise<Hex> {
   const account = getSignerAccount();
 
-  // Replicate the Solidity: keccak256(abi.encodePacked(feedIds, prices, timestamps, freshFlags))
-  // Solidity's abi.encodePacked with array types pads each element to 32 bytes (ABI encoding per element)
-  const types: string[] = [];
-  const values: bigint[] = [];
-
-  for (const id of feedIds) {
-    types.push("uint256");
-    values.push(BigInt(id));
-  }
-  for (const p of prices) {
-    types.push("uint256");
-    values.push(p);
-  }
-  for (const t of timestamps) {
-    types.push("uint256");
-    values.push(t);
-  }
-  for (const f of freshFlags) {
-    types.push("uint256");
-    values.push(f ? 1n : 0n);
-  }
-
-  const encoded = encodePacked(
-    types as readonly string[],
-    values as readonly bigint[]
+  // Replicate the Solidity: keccak256(abi.encode(feedIds, prices, timestamps, freshFlags))
+  const encoded = encodeAbiParameters(
+    parseAbiParameters("uint16[], uint256[], uint256[], bool[]"),
+    [
+      feedIds.map((id) => id as unknown as number),
+      prices,
+      timestamps,
+      freshFlags,
+    ]
   );
   const messageHash = keccak256(encoded);
 

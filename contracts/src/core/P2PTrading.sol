@@ -84,13 +84,14 @@ contract P2PTrading is IP2PTrading, OwnableUpgradeable, UUPSUpgradeable, Pausabl
         require(!marketState.isMarketOpen(feedId), "P2P: market is open");
         require(leverage >= 1e18 && leverage <= maxLeverage, "P2P: invalid leverage");
 
-        uint256 sizeUsd = collateral.mulFp(leverage);
-        require(sizeUsd >= minPositionUsd, "P2P: below min size");
-
-        // Calculate and deduct open fee (goes to main pool)
-        uint256 openFee = feeManager.calculateOpenCloseFee(sizeUsd);
+        // Calculate and deduct open fee from collateral BEFORE computing size
+        // This ensures sizeUsd = collateralAfterFee * leverage (exact leverage, no silent bump)
+        uint256 prelimSize = collateral.mulFp(leverage);
+        uint256 openFee = feeManager.calculateOpenCloseFee(prelimSize);
         require(collateral > openFee, "P2P: fee exceeds collateral");
         uint256 collateralAfterFee = collateral - openFee;
+        uint256 sizeUsd = collateralAfterFee.mulFp(leverage);
+        require(sizeUsd >= minPositionUsd, "P2P: below min size");
 
         // Transfer collateral to this contract (P2P escrow)
         usdc.safeTransferFrom(msg.sender, address(this), collateral);
@@ -198,6 +199,10 @@ contract P2PTrading is IP2PTrading, OwnableUpgradeable, UUPSUpgradeable, Pausabl
             p2pShortOI[pos.feedId] -= pos.sizeUsd;
         }
 
+        // Mark settled before external calls (checks-effects-interactions)
+        int256 realizedPnl = isProfit ? int256(pnl) : -int256(pnl);
+        pos.isSettled = true;
+
         // Pay trader
         if (payout > 0) {
             usdc.safeTransfer(pos.owner, payout);
@@ -208,9 +213,6 @@ contract P2PTrading is IP2PTrading, OwnableUpgradeable, UUPSUpgradeable, Pausabl
             usdc.safeTransfer(address(pool), closeFee);
             pool.receiveFees(closeFee);
         }
-
-        int256 realizedPnl = isProfit ? int256(pnl) : -int256(pnl);
-        pos.isSettled = true;
 
         emit P2PPositionClosed(positionId, pos.owner, realizedPnl);
     }
@@ -264,12 +266,13 @@ contract P2PTrading is IP2PTrading, OwnableUpgradeable, UUPSUpgradeable, Pausabl
                 p2pShortOI[feedId] -= FixedPointMath.min(pos.sizeUsd, p2pShortOI[feedId]);
             }
 
+            // Mark settled before external transfer (checks-effects-interactions)
+            pos.isSettled = true;
+            settledCount++;
+
             if (payout > 0 && usdc.balanceOf(address(this)) >= payout) {
                 usdc.safeTransfer(pos.owner, payout);
             }
-
-            pos.isSettled = true;
-            settledCount++;
         }
 
         if (settledCount > 0) {

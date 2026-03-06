@@ -38,7 +38,7 @@ contract P2PTradingTest is TestSetup {
         Custody custImpl = new Custody();
         goldCustody = Custody(address(new ERC1967Proxy(
             address(custImpl),
-            abi.encodeCall(Custody.initialize, (admin, GOLD_FEED, address(usdc), address(pool), 500, 1))
+            abi.encodeCall(Custody.initialize, (admin, GOLD_FEED, address(usdc), address(pool), 5, 5))
         )));
         pool.addCustody(address(goldCustody), 10000);
 
@@ -46,7 +46,7 @@ contract P2PTradingTest is TestSetup {
         FeeManager fmImpl = new FeeManager();
         feeManager = FeeManager(address(new ERC1967Proxy(
             address(fmImpl),
-            abi.encodeCall(FeeManager.initialize, (admin, 10, 500, 1, 9000))
+            abi.encodeCall(FeeManager.initialize, (admin, 10, 5, 5, 9000))
         )));
 
         // Deploy MarketState
@@ -119,7 +119,8 @@ contract P2PTradingTest is TestSetup {
         p2pTrading.openP2PPosition(GOLD_FEED, true, 1000e18, 10e18);
         vm.stopPrank();
 
-        assertEq(p2pTrading.p2pLongOI(GOLD_FEED), 10_000e18);
+        // sizeUsd = collateralAfterFee * leverage = 990 * 10 = 9900
+        assertEq(p2pTrading.p2pLongOI(GOLD_FEED), 9_900e18);
     }
 
     function test_openP2PPosition_rejectsOpenMarket() public {

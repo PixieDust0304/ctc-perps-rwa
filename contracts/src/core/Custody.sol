@@ -28,6 +28,7 @@ contract Custody is ICustody, OwnableUpgradeable, UUPSUpgradeable, ReentrancyGua
 
     uint256 public longOpenInterest;
     uint256 public shortOpenInterest;
+    uint256 public totalTraderCollateral;
 
     // Cumulative fee accumulators (18 decimals) — GMX-style
     uint256 public cumulativeLongBaseFeePerUnit;
@@ -39,7 +40,7 @@ contract Custody is ICustody, OwnableUpgradeable, UUPSUpgradeable, ReentrancyGua
 
     // Fee config
     uint256 public maxBaseFeePerHourBps;
-    uint256 public maxFundingRatePerIntervalBps;
+    uint256 public maxFundingRatePerHourBps;
 
     modifier onlyPool() {
         require(msg.sender == pool, "Custody: not pool");
@@ -62,7 +63,7 @@ contract Custody is ICustody, OwnableUpgradeable, UUPSUpgradeable, ReentrancyGua
         address usdc_,
         address pool_,
         uint256 maxBaseFeePerHourBps_,
-        uint256 maxFundingRatePerIntervalBps_
+        uint256 maxFundingRatePerHourBps_
     ) external initializer {
         __Ownable_init(owner_);
 
@@ -70,7 +71,7 @@ contract Custody is ICustody, OwnableUpgradeable, UUPSUpgradeable, ReentrancyGua
         usdc = IERC20(usdc_);
         pool = pool_;
         maxBaseFeePerHourBps = maxBaseFeePerHourBps_;
-        maxFundingRatePerIntervalBps = maxFundingRatePerIntervalBps_;
+        maxFundingRatePerHourBps = maxFundingRatePerHourBps_;
         lastAccrualTimestamp = block.timestamp;
     }
 
@@ -85,9 +86,13 @@ contract Custody is ICustody, OwnableUpgradeable, UUPSUpgradeable, ReentrancyGua
         uint256 totalOI = longOpenInterest + shortOpenInterest;
         if (totalOI == 0) return;
 
-        // Base fee accumulators
-        uint256 longRate = FeeCalculator.baseFeeRatePerInterval(longOpenInterest, totalOI, maxBaseFeePerHourBps);
-        uint256 shortRate = FeeCalculator.baseFeeRatePerInterval(shortOpenInterest, totalOI, maxBaseFeePerHourBps);
+        // Base fee accumulators (utilization-based: sideOI / LP liquidity only)
+        // Exclude trader collateral so fees reflect true LP utilization
+        uint256 lpLiq = availableBalance > totalTraderCollateral
+            ? availableBalance - totalTraderCollateral
+            : 0;
+        uint256 longRate = FeeCalculator.baseFeeRatePerInterval(longOpenInterest, lpLiq, maxBaseFeePerHourBps);
+        uint256 shortRate = FeeCalculator.baseFeeRatePerInterval(shortOpenInterest, lpLiq, maxBaseFeePerHourBps);
 
         cumulativeLongBaseFeePerUnit += longRate * intervals;
         cumulativeShortBaseFeePerUnit += shortRate * intervals;
@@ -96,7 +101,7 @@ contract Custody is ICustody, OwnableUpgradeable, UUPSUpgradeable, ReentrancyGua
         int256 fundingRate = FeeCalculator.fundingRatePerInterval(
             longOpenInterest,
             shortOpenInterest,
-            maxFundingRatePerIntervalBps
+            maxFundingRatePerHourBps
         );
         cumulativeFundingPerUnit += fundingRate * int256(intervals);
     }
@@ -122,11 +127,15 @@ contract Custody is ICustody, OwnableUpgradeable, UUPSUpgradeable, ReentrancyGua
 
         // Collateral USDC arrived in custody — add to available
         availableBalance += collateral;
-        // Reserve the full position size (max potential payout), not just collateral.
-        // This ensures availableBalance - reservedBalance reflects what LPs can withdraw
-        // and what the pool can actually use to pay other winners.
+        totalTraderCollateral += collateral;
+        // Reserve the full position size (max potential payout from LP perspective).
+        // Reserves must be backed by LP liquidity, not trader collateral — a trader's
+        // own deposit cannot back their own max payout (that would be circular).
         reservedBalance += sizeUsd;
-        require(availableBalance >= reservedBalance, "Custody: insufficient liquidity");
+        uint256 lpLiq = availableBalance > totalTraderCollateral
+            ? availableBalance - totalTraderCollateral
+            : 0;
+        require(lpLiq >= reservedBalance, "Custody: insufficient liquidity");
 
         if (isLong) {
             longOpenInterest += sizeUsd;
@@ -139,11 +148,14 @@ contract Custody is ICustody, OwnableUpgradeable, UUPSUpgradeable, ReentrancyGua
     }
 
     /// @notice Called by Trading when closing/liquidating a position
-    function decreasePosition(bool isLong, uint256 sizeUsd, uint256 /* collateral */) external onlyTrading {
+    function decreasePosition(bool isLong, uint256 sizeUsd, uint256 collateral) external onlyTrading {
         accrueFees();
 
         // Release the full position size reservation
         reservedBalance = reservedBalance > sizeUsd ? reservedBalance - sizeUsd : 0;
+        totalTraderCollateral = totalTraderCollateral > collateral
+            ? totalTraderCollateral - collateral
+            : 0;
 
         if (isLong) {
             longOpenInterest -= sizeUsd;
@@ -169,6 +181,21 @@ contract Custody is ICustody, OwnableUpgradeable, UUPSUpgradeable, ReentrancyGua
         emit BalanceUpdated(availableBalance, reservedBalance);
     }
 
+    /// @notice Called by Trading when adding collateral to an existing position
+    function increaseCollateral(uint256 amount) external onlyTrading {
+        accrueFees();
+        availableBalance += amount;
+        totalTraderCollateral += amount;
+        emit BalanceUpdated(availableBalance, reservedBalance);
+    }
+
+    /// @notice LP-only liquidity (excludes trader collateral), used for fee rate calculations
+    function lpLiquidity() external view returns (uint256) {
+        return availableBalance > totalTraderCollateral
+            ? availableBalance - totalTraderCollateral
+            : 0;
+    }
+
     // Admin setters
     function setTrading(address trading_) external onlyOwner {
         trading = trading_;
@@ -186,8 +213,8 @@ contract Custody is ICustody, OwnableUpgradeable, UUPSUpgradeable, ReentrancyGua
         maxBaseFeePerHourBps = bps;
     }
 
-    function setMaxFundingRatePerIntervalBps(uint256 bps) external onlyOwner {
-        maxFundingRatePerIntervalBps = bps;
+    function setMaxFundingRatePerHourBps(uint256 bps) external onlyOwner {
+        maxFundingRatePerHourBps = bps;
     }
 
     function _authorizeUpgrade(address) internal override onlyOwner {}

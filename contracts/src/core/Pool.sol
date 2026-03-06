@@ -96,17 +96,18 @@ contract Pool is IPool, OwnableUpgradeable, UUPSUpgradeable, ReentrancyGuard, Pa
         uint256[] memory balances = _getCustodyBalances();
         uint256[] memory withdrawAmounts = WaterfallWithdraw.calculate(usdcToReturn, balances);
 
+        // Update accounting before external calls (checks-effects-interactions)
+        totalPoolUSDC -= usdcToReturn;
+
+        // Burn CLP
+        clpToken.burn(msg.sender, clpAmount);
+
         // Execute withdrawals from each custody
         for (uint256 i = 0; i < custodies.length; i++) {
             if (withdrawAmounts[i] > 0) {
                 Custody(custodies[i]).removeLiquidity(withdrawAmounts[i]);
             }
         }
-
-        totalPoolUSDC -= usdcToReturn;
-
-        // Burn CLP
-        clpToken.burn(msg.sender, clpAmount);
 
         // Transfer USDC to user
         usdc.safeTransfer(msg.sender, usdcToReturn);

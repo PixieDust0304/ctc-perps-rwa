@@ -5,51 +5,66 @@ import {Test} from "forge-std/Test.sol";
 import {FeeCalculator} from "../../src/libraries/FeeCalculator.sol";
 
 contract FeeCalculatorTest is Test {
-    function test_baseFeeRate_balanced() public pure {
-        // 50/50 split: each side pays (50% of total OI) / total_OI * 5% / 240
-        // = 0.5 * 5% / 240 = 2.5% / 240
-        uint256 rate = FeeCalculator.baseFeeRatePerInterval(500e18, 1000e18, 500);
-        // Expected: 0.5 * 0.05 / 240 = 0.025 / 240 ≈ 0.00010416...
-        // In 18 decimals: ~104166666666666
-        assertApproxEqAbs(rate, 104166666666666, 1e6); // Allow tiny rounding
+    function test_baseFeeRate_lowUtilization() public pure {
+        // 10% utilization: sideOI=100k, liquidity=1M, maxFee=0.05%/hr (5 bps)
+        // rate = (100k / 1M) * 0.0005 / 240 = 0.1 * 0.0005 / 240
+        uint256 rate = FeeCalculator.baseFeeRatePerInterval(100_000e18, 1_000_000e18, 5);
+        // Expected: 0.1 * 0.0005 / 240 ≈ 208333333333
+        assertApproxEqAbs(rate, 208333333333, 1e6);
     }
 
-    function test_baseFeeRate_skewed() public pure {
-        // 80% shorts, 20% longs
-        // Long rate: 20/100 * 5%/240 = 0.2 * 0.05/240
-        uint256 longRate = FeeCalculator.baseFeeRatePerInterval(200e18, 1000e18, 500);
-        // Short rate: 80/100 * 5%/240 = 0.8 * 0.05/240
-        uint256 shortRate = FeeCalculator.baseFeeRatePerInterval(800e18, 1000e18, 500);
-        assertGt(shortRate, longRate);
-        assertApproxEqRel(shortRate, longRate * 4, 1e15); // 4x ratio
+    function test_baseFeeRate_highUtilization() public pure {
+        // 50% utilization: sideOI=500k, liquidity=1M
+        uint256 rate = FeeCalculator.baseFeeRatePerInterval(500_000e18, 1_000_000e18, 5);
+        // Expected: 0.5 * 0.0005 / 240 ≈ 1041666666666
+        assertApproxEqAbs(rate, 1041666666666, 1e6);
+    }
+
+    function test_baseFeeRate_fullUtilization() public pure {
+        // 100% utilization: sideOI = liquidity
+        uint256 rate = FeeCalculator.baseFeeRatePerInterval(1_000_000e18, 1_000_000e18, 5);
+        // Expected: 1.0 * 0.0005 / 240 ≈ 2083333333333
+        assertApproxEqAbs(rate, 2083333333333, 1e6);
+    }
+
+    function test_baseFeeRate_cappedAbove100Pct() public pure {
+        // OI exceeds liquidity — should cap at 100% utilization
+        uint256 rateCapped = FeeCalculator.baseFeeRatePerInterval(2_000_000e18, 1_000_000e18, 5);
+        uint256 rateAt100 = FeeCalculator.baseFeeRatePerInterval(1_000_000e18, 1_000_000e18, 5);
+        assertEq(rateCapped, rateAt100);
     }
 
     function test_baseFeeRate_zeroOI() public pure {
-        assertEq(FeeCalculator.baseFeeRatePerInterval(0, 0, 500), 0);
+        assertEq(FeeCalculator.baseFeeRatePerInterval(0, 1_000_000e18, 5), 0);
+    }
+
+    function test_baseFeeRate_zeroLiquidity() public pure {
+        assertEq(FeeCalculator.baseFeeRatePerInterval(100e18, 0, 5), 0);
     }
 
     function test_baseFeeOwed() public pure {
-        uint256 rate = 104166666666666; // ~one interval rate at 50/50
+        // 10% utilization rate per interval at 5 bps/hr
+        uint256 rate = 208333333333; // ~one interval rate at 10% utilization
         uint256 fee = FeeCalculator.baseFeeOwed(10000e18, rate, 240); // 1 hour
-        // Expected: ~10000 * 0.025 = 250 USDC (2.5% for 50% side over 1 hour)
-        assertApproxEqRel(fee, 250e18, 1e16); // 1% tolerance
+        // Expected: ~10000 * 0.00005 = 0.5 USDC (0.005% for 10% utilization over 1 hour)
+        assertApproxEqRel(fee, 5e17, 1e16); // 1% tolerance
     }
 
     function test_fundingRate_balanced() public pure {
         // Equal OI: funding rate = 0
-        int256 rate = FeeCalculator.fundingRatePerInterval(500e18, 500e18, 10);
+        int256 rate = FeeCalculator.fundingRatePerInterval(500e18, 500e18, 5);
         assertEq(rate, 0);
     }
 
     function test_fundingRate_longHeavy() public pure {
-        // 90% long, 10% short: longs pay shorts
-        int256 rate = FeeCalculator.fundingRatePerInterval(900e18, 100e18, 10);
+        // 90% long, 10% short: longs pay shorts (5 bps/hr max)
+        int256 rate = FeeCalculator.fundingRatePerInterval(900e18, 100e18, 5);
         assertGt(rate, 0); // Positive = longs pay
     }
 
     function test_fundingRate_shortHeavy() public pure {
-        // 10% long, 90% short: shorts pay longs
-        int256 rate = FeeCalculator.fundingRatePerInterval(100e18, 900e18, 10);
+        // 10% long, 90% short: shorts pay longs (5 bps/hr max)
+        int256 rate = FeeCalculator.fundingRatePerInterval(100e18, 900e18, 5);
         assertLt(rate, 0); // Negative = shorts pay
     }
 

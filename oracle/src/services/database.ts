@@ -193,6 +193,17 @@ export async function persistPosition(pos: {
 }
 
 /**
+ * Update position collateral (after addCollateral)
+ */
+export function updatePositionCollateral(positionId: string, newCollateral: string): void {
+  if (!prisma) return;
+  prisma.positionRecord.update({
+    where: { positionId },
+    data: { collateral: newCollateral },
+  }).catch((err) => logger.error("DB", `Failed to update collateral: ${err}`));
+}
+
+/**
  * Update position status (close/liquidate/settle)
  */
 export async function updatePositionStatus(

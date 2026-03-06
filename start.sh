@@ -35,6 +35,13 @@ cleanup() {
     kill "$pid" 2>/dev/null || true
   done
   wait 2>/dev/null || true
+  # Stop PostgreSQL (only runs with the protocol)
+  for pgdir in /opt/homebrew/opt/postgresql@15/bin /opt/homebrew/opt/postgresql@16/bin /opt/homebrew/opt/postgresql/bin; do
+    if [ -x "$pgdir/pg_ctl" ]; then
+      "$pgdir/pg_ctl" -D /opt/homebrew/var/postgresql@15 stop -m fast 2>/dev/null || true
+      break
+    fi
+  done
   echo "Done."
 }
 trap cleanup EXIT INT TERM
@@ -78,12 +85,18 @@ log "All ports free."
 log "Cleaning broadcast artifacts..."
 rm -rf "$CONTRACTS_DIR/broadcast/"
 
-# ─── 0b. Wipe database ───────────────────────────────────────────
-log "Wiping database..."
+# ─── 0b. Start PostgreSQL & wipe database ────────────────────────
+log "Starting PostgreSQL..."
 # Homebrew keg-only PostgreSQL may not be in PATH — add it
-for pgdir in /opt/homebrew/opt/postgresql@17/bin /opt/homebrew/opt/postgresql@16/bin /opt/homebrew/opt/postgresql/bin /usr/local/opt/postgresql@17/bin; do
+for pgdir in /opt/homebrew/opt/postgresql@15/bin /opt/homebrew/opt/postgresql@16/bin /opt/homebrew/opt/postgresql/bin; do
   [ -x "$pgdir/psql" ] && export PATH="$pgdir:$PATH" && break
 done
+# Start PostgreSQL (no auto-start on boot — only runs with the protocol)
+if command -v pg_ctl &>/dev/null; then
+  pg_ctl -D /opt/homebrew/var/postgresql@15 -l /tmp/ctc-postgres.log start 2>/dev/null || true
+  sleep 2
+fi
+log "Wiping database..."
 if command -v psql &>/dev/null; then
   if psql -h localhost -U "$(whoami)" -c "SELECT 1" postgres &>/dev/null; then
     psql -h localhost -U "$(whoami)" -c "DROP DATABASE IF EXISTS ctc_perps;" postgres 2>&1 || true

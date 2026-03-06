@@ -35,7 +35,7 @@ contract TradingTest is TestSetup {
         Custody custImpl = new Custody();
         goldCustody = Custody(address(new ERC1967Proxy(
             address(custImpl),
-            abi.encodeCall(Custody.initialize, (admin, GOLD_FEED, address(usdc), address(pool), 500, 1))
+            abi.encodeCall(Custody.initialize, (admin, GOLD_FEED, address(usdc), address(pool), 5, 5))
         )));
         pool.addCustody(address(goldCustody), 10000); // 100% to gold for simplicity
 
@@ -43,7 +43,7 @@ contract TradingTest is TestSetup {
         FeeManager fmImpl = new FeeManager();
         feeManager = FeeManager(address(new ERC1967Proxy(
             address(fmImpl),
-            abi.encodeCall(FeeManager.initialize, (admin, 10, 500, 1, 9000))
+            abi.encodeCall(FeeManager.initialize, (admin, 10, 5, 5, 9000))
         )));
 
         // Deploy MarketState
@@ -66,7 +66,7 @@ contract TradingTest is TestSetup {
                 address(feeManager),
                 address(marketState),
                 100e18,   // maxLeverage
-                3000,     // maintenanceMarginBps (30%)
+                1000,     // maintenanceMarginBps (10%)
                 10e18,    // minPositionUsd ($10)
                 120       // minPositionOpenTime (120s)
             ))
@@ -108,10 +108,10 @@ contract TradingTest is TestSetup {
         assertEq(pos.owner, user2);
         assertTrue(pos.isLong);
         assertEq(pos.entryPrice, GOLD_PRICE);
-        assertEq(pos.sizeUsd, 10_000e18); // 1000 * 10
-
-        // Open fee: 0.1% of 10000 = 10 USDC
-        assertEq(pos.collateral, 990e18); // 1000 - 10
+        // Open fee: 0.1% of prelimSize(10000) = 10 USDC, collateralAfterFee = 990
+        // sizeUsd = collateralAfterFee * leverage = 990 * 10 = 9900
+        assertEq(pos.collateral, 990e18);
+        assertEq(pos.sizeUsd, 9_900e18);
     }
 
     function test_openPosition_rejectsClosedMarket() public {
@@ -207,11 +207,10 @@ contract TradingTest is TestSetup {
 
         bytes32 posId = keccak256(abi.encodePacked(user2, uint256(1)));
 
-        // Price drops enough to trigger liquidation at 30% maintenance margin
-        // At 50x, 1.4% drop wipes ~70% of collateral (0.014 * 50 = 0.7)
-        // Need effective < 30% of initial (990e18 * 0.3 = 297e18)
-        // With 50x leverage, a 2% drop = 100% loss. Let's do 1.5% drop.
-        uint256 newRaw = 29921015000000; // ~$2992.10 (~1.5% drop)
+        // Price drops enough to trigger liquidation at 10% maintenance margin
+        // At 50x, buffer = 90% of collateral. 90% / 50x = 1.8% price move.
+        // A 1.9% drop should trigger liquidation.
+        uint256 newRaw = 29800000000000; // ~$2980.00 (~1.9% drop)
         vm.warp(block.timestamp + 121);
         _setGoldPriceAndOpenMarket(newRaw, block.timestamp);
 
@@ -241,6 +240,128 @@ contract TradingTest is TestSetup {
         vm.prank(liquidator);
         vm.expectRevert("Trading: not liquidatable");
         trading.liquidate(posId);
+    }
+
+    // === Add Collateral Tests ===
+
+    function test_addCollateral_basic() public {
+        vm.startPrank(user2);
+        usdc.approve(address(trading), 1000e18);
+        trading.openPosition(GOLD_FEED, true, 1000e18, 10e18);
+        vm.stopPrank();
+
+        bytes32 posId = keccak256(abi.encodePacked(user2, uint256(1)));
+        Trading.Position memory posBefore = trading.getPosition(posId);
+        uint256 custodyAvailBefore = goldCustody.availableBalance();
+        uint256 custodyCollBefore = goldCustody.totalTraderCollateral();
+        uint256 userBalBefore = usdc.balanceOf(user2);
+
+        vm.startPrank(user2);
+        usdc.approve(address(trading), 500e18);
+        trading.addCollateral(posId, 500e18);
+        vm.stopPrank();
+
+        Trading.Position memory posAfter = trading.getPosition(posId);
+        assertEq(posAfter.collateral, posBefore.collateral + 500e18);
+        assertEq(goldCustody.availableBalance(), custodyAvailBefore + 500e18);
+        assertEq(goldCustody.totalTraderCollateral(), custodyCollBefore + 500e18);
+        assertEq(usdc.balanceOf(user2), userBalBefore - 500e18);
+        // sizeUsd unchanged
+        assertEq(posAfter.sizeUsd, posBefore.sizeUsd);
+    }
+
+    function test_addCollateral_notOwner_reverts() public {
+        vm.startPrank(user2);
+        usdc.approve(address(trading), 1000e18);
+        trading.openPosition(GOLD_FEED, true, 1000e18, 10e18);
+        vm.stopPrank();
+
+        bytes32 posId = keccak256(abi.encodePacked(user2, uint256(1)));
+
+        vm.startPrank(user3);
+        usdc.approve(address(trading), 500e18);
+        vm.expectRevert("Trading: not owner");
+        trading.addCollateral(posId, 500e18);
+        vm.stopPrank();
+    }
+
+    function test_addCollateral_closedPosition_reverts() public {
+        vm.startPrank(user2);
+        usdc.approve(address(trading), 1000e18);
+        trading.openPosition(GOLD_FEED, true, 1000e18, 10e18);
+        vm.stopPrank();
+
+        bytes32 posId = keccak256(abi.encodePacked(user2, uint256(1)));
+
+        // Close the position
+        vm.warp(block.timestamp + 121);
+        _setGoldPriceAndOpenMarket(GOLD_RAW, block.timestamp);
+        vm.prank(user2);
+        trading.closePosition(posId);
+
+        // Try to add collateral to closed position
+        vm.startPrank(user2);
+        usdc.approve(address(trading), 500e18);
+        vm.expectRevert("Trading: already closed");
+        trading.addCollateral(posId, 500e18);
+        vm.stopPrank();
+    }
+
+    function test_addCollateral_preventsLiquidation() public {
+        // Open 50x long at $3037.70
+        vm.startPrank(user2);
+        usdc.approve(address(trading), 1000e18);
+        trading.openPosition(GOLD_FEED, true, 1000e18, 50e18);
+        vm.stopPrank();
+
+        bytes32 posId = keccak256(abi.encodePacked(user2, uint256(1)));
+
+        // Price drops ~1.9% — would normally trigger liquidation at 50x
+        uint256 newRaw = 29800000000000; // ~$2980.00
+        vm.warp(block.timestamp + 121);
+        _setGoldPriceAndOpenMarket(newRaw, block.timestamp);
+
+        // Add significant collateral to save the position
+        vm.startPrank(user2);
+        usdc.approve(address(trading), 5000e18);
+        trading.addCollateral(posId, 5000e18);
+        vm.stopPrank();
+
+        // Should no longer be liquidatable
+        vm.prank(liquidator);
+        vm.expectRevert("Trading: not liquidatable");
+        trading.liquidate(posId);
+    }
+
+    function test_addCollateral_closePayout() public {
+        // Open 10x long at $3037.70
+        vm.startPrank(user2);
+        usdc.approve(address(trading), 1000e18);
+        trading.openPosition(GOLD_FEED, true, 1000e18, 10e18);
+        vm.stopPrank();
+
+        bytes32 posId = keccak256(abi.encodePacked(user2, uint256(1)));
+
+        // Add 500 USDC collateral
+        vm.startPrank(user2);
+        usdc.approve(address(trading), 500e18);
+        trading.addCollateral(posId, 500e18);
+        vm.stopPrank();
+
+        // Price stays same, close position — payout should reflect updated collateral
+        vm.warp(block.timestamp + 121);
+        _setGoldPriceAndOpenMarket(GOLD_RAW, block.timestamp);
+
+        uint256 balBefore = usdc.balanceOf(user2);
+        vm.prank(user2);
+        trading.closePosition(posId);
+        uint256 balAfter = usdc.balanceOf(user2);
+
+        // Payout should be close to collateralAfterFee(990) + addedCollateral(500) - closeFee
+        // At same price, PnL = 0, so payout ~= total collateral - close fee
+        uint256 payout = balAfter - balBefore;
+        assertGt(payout, 1400e18); // 990 + 500 - fees > 1400
+        assertLt(payout, 1500e18); // but less than full 1490 due to close fee
     }
 
     // === Short Position Tests ===
@@ -281,8 +402,10 @@ contract TradingTest is TestSetup {
         trading.openPosition(GOLD_FEED, false, 2000e18, 5e18);
         vm.stopPrank();
 
-        // Check OI
-        assertEq(goldCustody.longOpenInterest(), 10_000e18);  // 1000 * 10
-        assertEq(goldCustody.shortOpenInterest(), 10_000e18); // 2000 * 5
+        // Check OI: sizeUsd = collateralAfterFee * leverage
+        // User2: fee=10, collAfterFee=990, size=990*10=9900
+        // User3: fee=10, collAfterFee=1990, size=1990*5=9950
+        assertEq(goldCustody.longOpenInterest(), 9_900e18);
+        assertEq(goldCustody.shortOpenInterest(), 9_950e18);
     }
 }

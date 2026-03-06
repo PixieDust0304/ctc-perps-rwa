@@ -159,7 +159,7 @@ contract TradingInvariantTest is TestSetup {
         Custody custImpl = new Custody();
         goldCustody = Custody(address(new ERC1967Proxy(
             address(custImpl),
-            abi.encodeCall(Custody.initialize, (admin, GOLD_FEED, address(usdc), address(pool), 500, 1))
+            abi.encodeCall(Custody.initialize, (admin, GOLD_FEED, address(usdc), address(pool), 5, 5))
         )));
         pool.addCustody(address(goldCustody), 10000);
 
@@ -167,7 +167,7 @@ contract TradingInvariantTest is TestSetup {
         FeeManager fmImpl = new FeeManager();
         feeManager = FeeManager(address(new ERC1967Proxy(
             address(fmImpl),
-            abi.encodeCall(FeeManager.initialize, (admin, 10, 500, 1, 9000))
+            abi.encodeCall(FeeManager.initialize, (admin, 10, 5, 5, 9000))
         )));
 
         // Deploy MarketState
@@ -185,7 +185,7 @@ contract TradingInvariantTest is TestSetup {
             abi.encodeCall(Trading.initialize, (
                 admin, address(usdc), address(oracle), address(pool),
                 address(feeManager), address(marketState),
-                100e18, 3000, 10e18, 120
+                100e18, 1000, 10e18, 120
             ))
         )));
 

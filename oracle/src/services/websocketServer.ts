@@ -50,7 +50,7 @@ export function broadcastMarketState(updates: MarketStateUpdate[]) {
 }
 
 export function broadcastPositionUpdate(
-  action: "opened" | "closed" | "liquidated" | "settled",
+  action: "opened" | "closed" | "liquidated" | "settled" | "collateralAdded",
   positionType: "trading" | "p2p",
   position: Record<string, unknown>
 ) {

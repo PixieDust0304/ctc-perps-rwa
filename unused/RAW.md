@@ -7,14 +7,14 @@
 - **RPC**: wss://mainnet3.creditcoin.network (mainnet), http://127.0.0.1:8545 (Anvil local)
 - **Native Currency**: CTC (18 decimals)
 - **Block Explorer**: https://creditcoin.blockscout.com
-- **Block Time**: 15 seconds
+- **Block Time**: 15 seconds (mainnet), 2 seconds (Anvil)
 - **Target**: Localnet (Anvil) only for v1. No mainnet/devnet.
 - **All tokens are MOCK** (MockUSDC, CLP, CPERP)
 
 ## Oracle: Autonom
 
 - **URL**: http://178.128.21.71:3000
-- **Endpoint**: `/prices/batch?feed_ids=2056,2069,2015,2062`
+- **Endpoint**: `/prices/batch?feed_ids=2056,2069,2003,2062`
 - **Auth**: Header `x-api-key: readkey1`
 - **Response format**:
   ```json
@@ -33,21 +33,22 @@
 - **Price calculation**: `price * 10^expo` (expo = -10), convert to 18 decimals onchain: `price * 10^8`
 - **Market hours**: `fresh=true` = market open, `fresh=false` = market closed
 - **Fetch interval**: 0.5 seconds
-- **Staleness cap**: 10 seconds during market hours; protocol pauses if oracle goes down
+- **Staleness cap**: 210 seconds — accommodates Autonom's ~120s commodity feed cadence
 - **Signer**: Single trusted ECDSA signer, admin (DAO) can change
+- **Signature method**: `keccak256(abi.encode(feedIds, rawPrices, timestamps, freshFlags))` — uses `abi.encode` (not `encodePacked`) to prevent hash collisions with dynamic arrays
 
 ## Feed IDs
 
 | Asset | Feed ID | Approx Price |
 |-------|---------|-------------|
-| Gold/XAU | 2056 | ~$3,037 |
+| Gold/XAU | 2056 | ~$5,130 |
 | Silver/XAG | 2069 | ~$83 |
-| Copper/HG1 | 2015 | ~$2.95 |
-| Platinum/XPT | 2062 | ~$2,277 |
+| Crude Oil/CL1 | 2003 | ~$79 |
+| Platinum/XPT | 2062 | ~$2,148 |
 
 ## Markets & Pool Model
 
-- **4 commodity markets**: Gold, Silver, Copper, Platinum
+- **4 commodity markets**: Gold, Silver, Crude Oil, Platinum
 - **Single pool** with 4 **isolated custodies** (one per commodity)
 - **Pool vs Traders** during market hours
 - **P2P (trader vs trader)** during off-hours
@@ -59,56 +60,73 @@
 
 - **Max leverage**: 100x
 - **Min position size**: $10 USD
-- **Min position open time**: 120 seconds (anti-MEV/oracle arbitrage)
-- **Maintenance margin**: 30% of initial collateral
-  - At 100x leverage: 0.7% adverse price move = liquidation
-  - At 10x leverage: 7% adverse price move = liquidation
+- **Min position open time**: 300 seconds (anti-MEV/oracle arbitrage)
+- **Maintenance margin**: 10% of initial collateral (1000 bps)
+  - At 100x leverage: ~0.9% adverse price move = liquidation
+  - At 10x leverage: ~9% adverse price move = liquidation
 - **Liquidation**: Full liquidation, public call (anyone can execute)
-- **Short payout cap**: collateral x leverage
-- **Long payout cap**: min(collateral x leverage, custody_available_balance)
+- **Payout cap**: min(sizeUsd, custody_available_balance)
 - **Pool utilization**: 100% allowed per custody
+- **Fee-then-size model**: Open fee deducted from collateral before computing sizeUsd. `sizeUsd = (collateral - openFee) × leverage`. Trader gets exact requested leverage.
+
+## Trading Parameters (P2P Off-Hours)
+
+- **Max leverage**: 100x
+- **Min position size**: $10 USD
+- **Min position open time**: 10 seconds (shorter than market hours — VAMM pricing, no oracle arb risk)
+- **No liquidations** during off-hours
+- **Profit capped** at other traders' collateral (zero-sum escrow)
+- **Same fee-then-size model** as market hours
+
+## Custody Economics
+
+### totalTraderCollateral Separation
+- **Problem**: When trader collateral is included in `availableBalance`, it artificially inflates LP liquidity, suppressing borrow fee rates. More traders = cheaper fees (perverse incentive). Also creates circular dependency — trader collateral backing other traders' payouts.
+- **Solution**: `totalTraderCollateral` counter in Custody. Incremented on `increasePosition()`, decremented on `decreasePosition()`.
+- **Fee rate denominator**: `lpLiquidity = availableBalance - totalTraderCollateral` (LP-only liquidity)
+- **Reservation checks and payout caps** still use raw `availableBalance` (reflects actual USDC in custody)
 
 ## Fee Structure
 
 | Fee | Rate | Interval | Destination |
 |-----|------|----------|-------------|
-| Open/Close | 0.1% of notional | One-time | Pool (90% LP / 10% protocol) |
+| Open/Close | 0.1% of preliminary notional | One-time | Pool (90% LP / 10% protocol) |
 | Base Fee (borrow) | 0-5% per hour | Applied every 15s | Pool (90% LP / 10% protocol) |
-| Funding Rate | Small, imbalance-based | Applied every 15s | Between traders (pool as accounting intermediary) |
+| Funding Rate | Small, imbalance-based | Applied every 15s | Between traders (pool as intermediary) |
 
-### Base Fee Formula
-- `rate_for_side = (side_OI / total_OI) x 5% per hour`
-- Example: 20% longs, 80% shorts -> longs pay 1%/hr, shorts pay 4%/hr
+### Base Fee Formula (Utilization-Based)
+- `lpLiquidity = availableBalance - totalTraderCollateral`
+- `rate_for_side = (side_OI / lpLiquidity) × maxBaseFee / 240`
+- Utilization capped at 100% (rate never exceeds maxBaseFee)
 - Both sides ALWAYS pay (cost of borrowing from pool)
 - Per-15s rate = hourly_rate / 240
 - 90% to CLP holders (LPs), 10% to protocol
-- Protocol fee initially redirected to custody address (not team wallet)
 
 ### Funding Rate Formula
 - Imbalance-based: majority side pays minority side
-- If longs=90%, shorts=10%: "longs pay for the missing 40% on the short side" (40% = gap from 50/50)
-- Applied every 15 seconds (per block)
+- If longs=90%, shorts=10%: longs pay shorts proportional to imbalance
+- Applied every 15 seconds
 - Small per-interval amount, compounds over time
 - Zero-sum between traders. Pool acts as accounting intermediary:
   - Trader pays funding → pool.absorbPnL(+amount) (USDC stays in custody)
   - Trader receives funding → pool.absorbPnL(-amount) (USDC leaves custody)
-  - Net pool impact is zero when both sides exist. When imbalanced with no counterparty, pool keeps residual as directional risk compensation.
+  - Net pool impact is zero when both sides exist. When imbalanced with no counterparty, pool keeps residual.
 - Accumulated funding is signed (int256): positive = trader pays, negative = trader receives
 - Longs use cumulative delta as-is; shorts invert the delta
-- Formula: `funding_rate = (long_OI - short_OI) / (long_OI + short_OI) x max_funding_rate`
+- Formula: `funding_rate = (long_OI - short_OI) / (long_OI + short_OI) × max_funding_rate`
 
 ## Off-Hours P2P System
 
 ### Trigger
-- Autonom returns `fresh=false` for a feed -> that commodity enters off-hours mode
+- Autonom returns `fresh=false` for a feed (debounced with configurable confirmations) → off-hours mode
 - Per-feed independent (Gold can be closed while Silver is open)
 
 ### VAMM Pricing
 - Virtual AMM (x*y=k, like Perpetual Protocol v1)
 - Initializes at last known spot price when market closes
 - Positions move the virtual price (shorts push down, longs push up)
-- **Multiplier**: scales trillion-dollar commodity markets to millions for meaningful impact
-  - Gold ~$13T market -> ~$13M virtual depth -> $10K trade moves price ~0.08%
+- **Multiplier**: scales to millions for meaningful impact
+  - Gold ~$13M virtual depth → $10K trade moves price ~0.08%
   - Configurable per custody via DAO
 - At market open: VAMM price discarded, real spot price used for settlement
 
@@ -119,19 +137,17 @@
 - Close during off-hours: PnL settled at VAMM price, paid from opposing side's collateral
 - **NO liquidations** during off-hours
 - Early closers can drain P2P pool ("first to close wins" dynamic - INTENTIONAL)
-- **One-sided trades**: Pay 5% max base fee, routed to MAIN pool (risk-free LP yield)
-- **Two-sided trades**: Funding rate between P2P traders, base fee to main pool
-- 0.1% open/close fee -> main pool
+- Base fee → main pool (risk-free LP yield)
+- 0.1% open/close fee → main pool
+- Min open time: 10 seconds (vs 300s for market hours)
 
 ### Market Open Settlement
-- Oracle service detects `fresh=true` -> triggers settlement sub-service
-- **Separate keeper** (Market-Open Keeper) handles this
+- Oracle service detects `fresh=true` (debounced) → triggers settlement
+- **Separate keeper** (P2PSettlementKeeper) handles this
 - ALL off-hours positions are **force-closed** at real spot price
-- Winning side splits losing side's collateral **pro-rata** by position size
-- If no opposing side: payout = 0
-- If negative equity: capped at 0 (no bad debt)
-- **Multiple retries** until 100% settled
-- **Must complete before** main market trading resumes (no overlap)
+- Batch settlement in chunks of 50 positions
+- `sweepLeftoverUSDC()` cleans rounding dust
+- **Must complete before** main market trading resumes (KeeperCoordinator lock)
 - Only handles positions opened during market-close timestamps
 
 ### Main Pool Positions During Off-Hours
@@ -139,7 +155,6 @@
 - Continue accruing base fee and funding rate
 - No liquidation during off-hours
 - At market open: main keeper evaluates against new spot price
-- Example: short at $100, liq at $105, market opens at $106 -> liquidated by main keeper
 
 ## LP Withdrawal Waterfall
 
@@ -161,7 +176,7 @@
 - **Majority**: 51%
 - **Voting period**: 48 hours
 - **Timelock**: None - immediate execution on passing
-- **Scope**: Everything admin-configurable (custody allocations, fee params, VAMM depth, oracle signer, max leverage, new markets, emergency pause, etc.)
+- **Scope**: Everything admin-configurable
 
 ## Tokens
 
@@ -177,23 +192,23 @@
 |-----------|-----------|
 | Smart Contracts | Solidity, Foundry, OpenZeppelin UUPS |
 | Oracle Service | TypeScript, Node.js, viem |
-| Liquidation Bot | TypeScript (same service as oracle) |
-| Database | PostgreSQL, Prisma ORM |
-| Frontend | Next.js, wagmi, viem, RainbowKit |
-| Charts | TradingView Lightweight Charts (Apache 2.0) |
-| Real-time | WebSocket (oracle -> frontend) |
+| Keepers | TypeScript (same service as oracle, tick-based) |
+| Database | PostgreSQL, Prisma ORM v5 |
+| Frontend | Next.js 16, React 19, wagmi, viem, RainbowKit |
+| Charts | TradingView Lightweight Charts v4 |
+| Real-time | WebSocket (oracle → frontend) |
 | Local Chain | Anvil (Foundry) |
 
 ## Cross-Check: Issues Found & Resolutions
 
-### Issue 1: 120s Min Open Time in Off-Hours
-- 120s was designed to prevent oracle arbitrage during market hours
+### Issue 1: Min Open Time in Off-Hours
+- 300s was designed to prevent oracle arbitrage during market hours
 - Off-hours uses VAMM (not oracle), so oracle arb doesn't apply
 - BUT someone could open/close quickly to extract from opposing side
-- **RESOLUTION**: Apply 120s to off-hours too for consistency
+- **RESOLUTION**: Apply 10s min open time to P2P (shorter since no oracle arb, but prevents instant extraction)
 
 ### Issue 2: Oracle Staleness + Off-Hours
-- 10s staleness cap would trigger during off-hours (stale prices)
+- 210s staleness cap would trigger during off-hours (stale prices)
 - **RESOLUTION**: Staleness only enforced during market hours. Off-hours P2P uses VAMM, doesn't depend on oracle freshness.
 
 ### Issue 3: Off-Hours No Liquidation + Negative Equity
@@ -201,44 +216,43 @@
 - **RESOLUTION**: P2P payouts capped at available P2P pool collateral. Negative equity positions contribute 0 at settlement.
 
 ### Issue 4: Base Fee - Both Sides Pay
-- Formula: `(side_OI / total_OI) x 5%` means BOTH sides always pay
-- Different from Gains Network (only majority pays)
+- Formula: `(side_OI / lpLiquidity) × maxBaseFee` means BOTH sides always pay
 - **RESOLUTION**: Intentional design - cost of borrowing from pool. NOT a contradiction.
 
-### Issue 5: 100% Utilization + Long Payout
+### Issue 5: 100% Utilization + Payout
 - If all traders win, pool can't pay everyone
-- **RESOLUTION**: Long payout capped at min(collateral x leverage, custody_available_balance). First to close gets paid. Consider ADL (Auto-Deleveraging) for v2.
+- **RESOLUTION**: Payout capped at min(sizeUsd, custody_available_balance). First to close gets paid. Consider ADL for v2.
 
 ### Issue 6: CLP Value + Custody Isolation
 - CLP scales with total pool USDC, but custodies are isolated
 - If Gold custody gets drained, CLP value drops
 - **RESOLUTION**: Intentional - LPs accept aggregate risk. Custodies isolated for TRADER risk management.
 
-### Issue 7: Off-Hours Base Fee Destination
-- Fee rate based on P2P OI skew (not pool utilization)
-- Fee destination is main pool
-- **RESOLUTION**: Consistent - different rate calculation vs destination. Risk-free yield for LPs.
+### Issue 7: Trader Collateral Inflating LP Metrics
+- Trader USDC deposits increase `availableBalance`, making utilization appear lower, suppressing borrow fees
+- More traders = cheaper fees (perverse incentive)
+- **RESOLUTION**: `totalTraderCollateral` tracked separately. Fee rate uses `lpLiquidity = availableBalance - totalTraderCollateral`. Reservation checks and payout caps still use raw `availableBalance`.
 
-### Issue 8: Market Open Settlement Order
-- Off-hours keeper MUST complete before main keeper resumes
-- Could delay main market trading
-- **RESOLUTION**: Acceptable trade-off for correctness. Batch settlement with retries.
+### Issue 8: abi.encodePacked Hash Collisions
+- `abi.encodePacked` with dynamic arrays can produce identical hashes for different inputs
+- **RESOLUTION**: Changed Oracle.sol signature to use `abi.encode`. Oracle signing.ts uses `encodeAbiParameters` to match.
 
-### Issue 9: VAMM Price vs Spot Disconnect
-- Off-hours closes settle at VAMM price, market-open settles at real spot
-- **RESOLUTION**: Intentional "gambling" aspect. Not a bug.
+### Issue 9: Fee-Then-Size vs Size-Then-Fee
+- Original: `sizeUsd = collateral × leverage`, fee deducted after. Trader gets slightly higher effective leverage than requested.
+- **RESOLUTION**: Fee-then-size model. `prelimSize = collateral × leverage`, `openFee = prelimSize × feeBps`, `sizeUsd = (collateral - openFee) × leverage`. Exact requested leverage, no silent bump.
 
-### Issue 10: 100x Leverage + 0.1% Fee Impact
-- At 100x: 0.1% open fee = 10% of collateral. Open + close = ~20% of collateral.
-- **RESOLUTION**: Intentional economic disincentive against extreme leverage. Display warning in UI.
+### Issue 10: 30% Maintenance Margin Too Aggressive
+- At 100x leverage with 30% maintenance margin, liquidation at 0.7% adverse move
+- Industry standards: 0.5-5% maintenance margin for high-leverage perps
+- **RESOLUTION**: Reduced to 10% (1000 bps). At 100x: ~0.9% adverse move. At 10x: ~9% adverse move. Reasonable for commodity markets.
 
 ### Issue 11: VAMM k-value Initialization
 - Need initial virtual reserve amounts, not just spot price
-- **RESOLUTION**: Multiplier config defines virtual depth. Gold at $3000/oz, virtual depth $13M: `x_virtual = depth / price`, `y_virtual = depth`, `k = x * y`.
+- **RESOLUTION**: Multiplier config defines virtual depth. Gold at $5130/oz, virtual depth $13M: `x_virtual = depth / price`, `y_virtual = depth`, `k = x * y`.
 
 ### Issue 12: P2P Settlement Gas Costs
 - Force-closing hundreds of positions could be expensive
-- **RESOLUTION**: Batch settlement function `settleP2PBatch(uint256[] positionIds)`. Keeper processes in chunks.
+- **RESOLUTION**: Batch settlement `settleP2PBatch(bytes32[])` in chunks of 50. Keeper processes iteratively.
 
 ### Issue 13: CreditCoin Compatibility (CONFIRMED)
 - wagmi + viem: COMPATIBLE via `defineChain`
@@ -246,6 +260,10 @@
 - TradingView Lightweight Charts: COMPATIBLE (pure frontend, no chain dependency)
 - Foundry/Anvil: COMPATIBLE (standard EVM)
 - MetaMask: COMPATIBLE (standard EVM chain)
+
+### Issue 14: DB-Chain Desync
+- Events can be missed if oracle service crashes during position open/close
+- **RESOLUTION**: PositionReconciler runs every 30 min, verifies all DB "open" positions against on-chain state. Catches missed events.
 
 ## Git Config
 - **User**: Supreeta Dubey

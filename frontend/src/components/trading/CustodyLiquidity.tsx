@@ -15,7 +15,7 @@ export function CustodyLiquidity() {
       {
         address: e.address!,
         abi: CUSTODY_ABI,
-        functionName: "availableBalance" as const,
+        functionName: "lpLiquidity" as const,
       },
       {
         address: e.address!,
@@ -31,11 +31,11 @@ export function CustodyLiquidity() {
   return (
     <div className="flex gap-3 px-4 py-2 overflow-x-auto">
       {custodyEntries.map((entry, i) => {
-        const available = data?.[i * 2]?.result as bigint | undefined;
+        const lpLiq = data?.[i * 2]?.result as bigint | undefined;
         const reserved = data?.[i * 2 + 1]?.result as bigint | undefined;
-        const total = available ? Number(formatEther(available)) : 0;
+        const lp = lpLiq ? Number(formatEther(lpLiq)) : 0;
         const res = reserved ? Number(formatEther(reserved)) : 0;
-        const unreserved = total - res;
+        const unreserved = Math.max(lp - res, 0);
 
         return (
           <div

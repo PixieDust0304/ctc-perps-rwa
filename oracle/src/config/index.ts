@@ -74,7 +74,7 @@ export const config = {
   apiPort: Number(process.env.API_PORT || "3001"),
 
   // Database
-  databaseUrl: process.env.DATABASE_URL || "postgresql://localhost:5432/ctc_perps",
+  databaseUrl: process.env.DATABASE_URL || "",
 };
 
 export type FeedId = (typeof config.feedIds)[number];

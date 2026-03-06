@@ -55,7 +55,7 @@ contract OracleTest is TestSetup {
 
         // Sign with wrong key
         uint256 wrongKey = 0xDEAD;
-        bytes32 messageHash = keccak256(abi.encodePacked(feedIds, prices, timestamps, freshFlags));
+        bytes32 messageHash = keccak256(abi.encode(feedIds, prices, timestamps, freshFlags));
         bytes32 ethSignedHash = MessageHashUtils_toEthSignedMessageHash(messageHash);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(wrongKey, ethSignedHash);
         bytes memory signature = abi.encodePacked(r, s, v);
@@ -84,7 +84,7 @@ contract OracleTest is TestSetup {
         timestamps[0] = block.timestamp;
         freshFlags[0] = true;
 
-        bytes32 messageHash = keccak256(abi.encodePacked(feedIds, prices, timestamps, freshFlags));
+        bytes32 messageHash = keccak256(abi.encode(feedIds, prices, timestamps, freshFlags));
         bytes32 ethSignedHash = MessageHashUtils_toEthSignedMessageHash(messageHash);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(signerPrivateKey, ethSignedHash);
         bytes memory signature = abi.encodePacked(r, s, v);

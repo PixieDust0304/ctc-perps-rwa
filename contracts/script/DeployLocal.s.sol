@@ -76,7 +76,7 @@ contract DeployLocal is Script {
         FeeManager fmImpl = new FeeManager();
         FeeManager feeManager = FeeManager(address(new ERC1967Proxy(
             address(fmImpl),
-            abi.encodeCall(FeeManager.initialize, (deployer, 10, 500, 1, 9000))
+            abi.encodeCall(FeeManager.initialize, (deployer, 10, 5, 5, 9000))
         )));
         console.log("FeeManager:", address(feeManager));
 
@@ -115,7 +115,7 @@ contract DeployLocal is Script {
             abi.encodeCall(Trading.initialize, (
                 deployer, address(usdc), address(oracle), address(pool),
                 address(feeManager), address(marketState),
-                100e18, 3000, 10e18, 300
+                100e18, 1000, 10e18, 300
             ))
         )));
         trading.setFeedCustody(GOLD, goldCustody);
@@ -214,7 +214,7 @@ contract DeployLocal is Script {
         Custody impl = new Custody();
         return address(new ERC1967Proxy(
             address(impl),
-            abi.encodeCall(Custody.initialize, (owner, feedId, usdc, pool, 500, 1))
+            abi.encodeCall(Custody.initialize, (owner, feedId, usdc, pool, 5, 5))
         ));
     }
 }
