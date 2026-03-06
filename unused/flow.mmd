@@ -41,10 +41,10 @@ graph TB
     subgraph CONTRACTS["SMART CONTRACTS · Solidity · Anvil :8545"]
         ORACLE_SOL["Oracle.sol<br/>abi.encode + ECDSA<br/>210s staleness"]
         MARKETSTATE["MarketState.sol<br/>per-feed open/close"]
-        TRADING["Trading.sol<br/>open · close · liquidate<br/>10% maintenance margin<br/>fee-then-size model<br/>300s min open time"]
+        TRADING["Trading.sol<br/>open · close · addCollateral · liquidate<br/>10% maintenance margin<br/>fee-then-size model<br/>300s min open time"]
         P2PTRADING["P2PTrading.sol<br/>off-hours escrow<br/>VAMM pricing<br/>10s min open time"]
         VAMM["VAMM.sol<br/>x·y=k virtual AMM<br/>depth multiplier"]
-        FEEMANAGER["FeeManager.sol<br/>0.1% open/close fee<br/>LP/protocol 90/10 split"]
+        FEEMANAGER["FeeManager.sol<br/>0.1% open/close fee<br/>5 bps/hr base + funding<br/>LP/protocol 90/10 split"]
         POOL["Pool.sol<br/>LP accounting<br/>CLP mint/burn<br/>checks-effects-interactions"]
         GOVERNANCE["Governance.sol<br/>CPERP voting<br/>48h · 20% quorum"]
 
@@ -117,7 +117,7 @@ graph TB
     USER --> TRADEPAGE
     USER --> POOLPAGE
     USER --> GOVPAGE
-    TRADEPAGE -->|"openPosition / closePosition"| TRADING
+    TRADEPAGE -->|"openPosition / closePosition / addCollateral"| TRADING
     TRADEPAGE -->|"openP2PPosition / closeP2PPosition"| P2PTRADING
     POOLPAGE -->|"deposit / withdraw"| POOL
     GOVPAGE -->|"propose / vote / execute"| GOVERNANCE
@@ -126,7 +126,7 @@ graph TB
     TRADING -->|"getPriceIfFresh"| ORACLE_SOL
     TRADING -->|"isMarketOpen"| MARKETSTATE
     TRADING -->|"calculateFee"| FEEMANAGER
-    TRADING -->|"increase/decrease/pay<br/>totalTraderCollateral ±"| CUSTODY_GOLD
+    TRADING -->|"increase/decrease/increaseCollateral/pay<br/>totalTraderCollateral ±"| CUSTODY_GOLD
     TRADING -->|"receiveFees / absorbPnL"| POOL
 
     P2PTRADING -->|"swap / reverseSwap"| VAMM

@@ -136,14 +136,15 @@ Deployment does the following in order:
 9. Deploys P2PTrading (proxy)
 10. Deploys Governance (proxy)
 11. Mints 10M test USDC to deployer
-12. Transfers all contract ownership to Governance
+12. Bootstraps 2M USDC liquidity into Pool (500k per custody)
+13. Transfers all contract ownership to Governance
 
 **Key init parameters**:
 - Oracle staleness: `210` seconds (accommodates Autonom's ~120s commodity feed cadence)
 - Trading minPositionOpenTime: `300` seconds (market-hours positions must be open 300s before closing)
 - P2P minPositionOpenTime: `10` seconds (off-hours P2P — shorter since VAMM pricing, no oracle arb)
 - Maintenance margin: `10%` (1000 bps) — liquidation at ~0.9% adverse move at 100x
-- FeeManager: 0.1% open/close fee, 5% max base rate/hr, 0.01% max funding, 90% to LPs
+- FeeManager: 0.1% open/close fee, 0.05% max base rate/hr, 0.05% max funding/hr, 90% to LPs
 
 **Fee-then-size model**: Open fee is calculated on preliminary size (`collateral × leverage`), then deducted from collateral. Final `sizeUsd = collateralAfterFee × leverage`, giving traders exact requested leverage.
 
@@ -266,7 +267,7 @@ cd contracts
 ~/.foundry/bin/forge test
 ```
 
-114 tests across 16 test suites covering: Oracle price updates, Pool/Custody logic, fee calculation, fixed-point math, price utils, token minting, governance proposals, trading lifecycle, P2P escrow, liquidation, custody drain, invariants.
+119 tests across 16 test suites covering: Oracle price updates, Pool/Custody logic, fee calculation, fixed-point math, price utils, token minting, governance proposals, trading lifecycle (including addCollateral), P2P escrow, liquidation, custody drain, invariants.
 
 Test setup uses the same feed IDs and staleness threshold as production (`contracts/test/helpers/TestSetup.sol`).
 
@@ -315,5 +316,8 @@ The `start.sh` script handles starting PostgreSQL, creating the database, and pu
 | Oracle staleness (off-chain) | 210,000ms | oracle/src/config/index.ts | Oracle service skip threshold          |
 | Fetch interval         | 500ms  | oracle/src/config/index.ts        | Autonom polling rate                        |
 | Fee accrual interval   | 15     | oracle/src/config/index.ts        | Ticks between fee accrual calls             |
+| Max base fee rate      | 5 bps/hr | DeployLocal.s.sol `_deployCustody` | 0.05%/hr on notional; utilization-scaled  |
+| Max funding rate       | 5 bps/hr | DeployLocal.s.sol `_deployCustody` | 0.05%/hr on notional; OI-imbalance-scaled |
+| Open/close fee         | 10 bps | DeployLocal.s.sol line 79           | 0.1% of position size                      |
 | Anvil block time       | 2s     | start.sh                          | Local chain block production rate           |
 | Reconciler interval    | 30min  | oracle/src/index.ts               | DB↔chain position reconciliation            |

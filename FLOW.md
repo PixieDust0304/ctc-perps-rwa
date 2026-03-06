@@ -90,7 +90,7 @@ User ──► Frontend ──► Trading.sol
                           ├──► Oracle.sol (getPriceIfFresh)
                           ├──► MarketState.sol (isMarketOpen? must be YES)
                           ├──► FeeManager.sol (calculateOpenCloseFee)
-                          ├──► Custody.sol (increasePosition / decreasePosition / payTrader)
+                          ├──► Custody.sol (increasePosition / decreasePosition / increaseCollateral / payTrader)
                           └──► Pool.sol (receiveFees / absorbPnL)
 ```
 
@@ -98,7 +98,8 @@ User ──► Frontend ──► Trading.sol
 
 **Open**: User deposits USDC → Fee deducted → Custody holds collateralAfterFee → `totalTraderCollateral` incremented → Position recorded with fee/funding snapshots
 **Close**: Oracle price → PnL calc → Funding applied → Base fee + close fee deducted → Trader paid from Custody → `totalTraderCollateral` decremented
-**Liquidate**: Keeper calls → effective collateral check (PnL + fees + funding) → if < 10% of initial margin → force close
+**Add Collateral**: Owner sends USDC → Custody `availableBalance` and `totalTraderCollateral` increase → Position collateral updated (no size/OI/fee-snapshot change)
+**Liquidate**: Keeper calls → effective collateral check (PnL + fees + funding) → if < 10% of initial margin → force close (emits `PositionLiquidated` only, no `PositionClosed`)
 
 ### 3. Off-Hours P2P Trading Flow
 
@@ -177,6 +178,7 @@ Market Open (fresh=true, debounced):
 │       ├─ watchContractEvent(PositionOpened) → Map + DB persist  │
 │       ├─ watchContractEvent(PositionClosed) → Map + DB update   │
 │       ├─ watchContractEvent(PositionLiquidated) → Map + DB      │
+│       ├─ watchContractEvent(CollateralAdded) → Map + DB update  │
 │       ├─ watchContractEvent(P2PPositionOpened) → Map + DB       │
 │       ├─ watchContractEvent(P2PPositionClosed) → Map + DB       │
 │       └─ WebSocket: broadcastPositionUpdate() on each event     │
@@ -228,8 +230,9 @@ Custody.accrueFees()├─── Funding Rate (zero-sum) ───► Pool as in
 ```
 
 - **FeeAccrualKeeper** triggers `Custody.accrueFees()` on-chain every 15s via post-push hook
-- **Base fee rate** uses LP-only liquidity (`availableBalance - totalTraderCollateral`) as denominator to prevent trader collateral from suppressing fee rates
-- **totalTraderCollateral**: tracked separately in Custody — incremented on position open, decremented on close/liquidation
+- **Base fee rate** (5 bps/hr = 0.05%/hr): uses LP-only liquidity (`availableBalance - totalTraderCollateral`) as denominator to prevent trader collateral from suppressing fee rates. Configured as hourly bps, divided by 240 intervals/hr internally.
+- **Funding rate** (5 bps/hr = 0.05%/hr): configured as hourly bps (`maxFundingRatePerHourBps`), divided by 240 intervals/hr internally. At 100x leverage, 5 bps/hr on notional = 5%/hr of collateral.
+- **totalTraderCollateral**: tracked separately in Custody — incremented on position open or addCollateral, decremented on close/liquidation
 - Funding rate drives OI rebalancing: longs pay shorts when longOI > shortOI, vice versa
 
 ### 8. Liquidation Pre-Check Math (Off-Chain, Mirrors Solidity)
