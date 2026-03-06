@@ -93,6 +93,15 @@ export const TRADING_ABI = [
     ],
     stateMutability: "view",
   },
+  {
+    name: "PositionClosed",
+    type: "event",
+    inputs: [
+      { name: "positionId", type: "bytes32", indexed: true },
+      { name: "owner", type: "address", indexed: true },
+      { name: "realizedPnl", type: "int256", indexed: false },
+    ],
+  },
 ] as const;
 
 export const P2P_TRADING_ABI = [

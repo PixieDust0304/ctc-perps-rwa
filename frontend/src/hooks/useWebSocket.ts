@@ -31,43 +31,57 @@ export function useWebSocket(url: string = "ws://localhost:8080") {
   }, []);
 
   useEffect(() => {
-    const ws = new WebSocket(url);
-    wsRef.current = ws;
+    let disposed = false;
+    let reconnectTimer: ReturnType<typeof setTimeout>;
 
-    ws.onopen = () => setConnected(true);
-    ws.onclose = () => {
-      setConnected(false);
-      // Reconnect after 2s
-      setTimeout(() => {
-        wsRef.current = new WebSocket(url);
-      }, 2000);
-    };
+    function connect() {
+      if (disposed) return;
+      const ws = new WebSocket(url);
+      wsRef.current = ws;
 
-    ws.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data);
-        if (msg.type === "price") {
-          const updates = msg.data as PriceUpdate[];
-          setPrices((prev) => {
-            const next = { ...prev };
-            for (const u of updates) {
-              next[u.feedId] = u;
-            }
-            return next;
-          });
-        } else if (msg.type === "position") {
-          const update = msg.data as PositionUpdate;
-          for (const cb of positionCallbacksRef.current) {
-            cb(update);
-          }
+      ws.onopen = () => setConnected(true);
+
+      ws.onclose = () => {
+        setConnected(false);
+        if (!disposed) {
+          reconnectTimer = setTimeout(connect, 2000);
         }
-      } catch {
-        // ignore parse errors
-      }
-    };
+      };
+
+      ws.onerror = () => {
+        // onclose will fire after this, triggering reconnect
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.type === "price") {
+            const updates = msg.data as PriceUpdate[];
+            setPrices((prev) => {
+              const next = { ...prev };
+              for (const u of updates) {
+                next[u.feedId] = u;
+              }
+              return next;
+            });
+          } else if (msg.type === "position") {
+            const update = msg.data as PositionUpdate;
+            for (const cb of positionCallbacksRef.current) {
+              cb(update);
+            }
+          }
+        } catch {
+          // ignore parse errors
+        }
+      };
+    }
+
+    connect();
 
     return () => {
-      ws.close();
+      disposed = true;
+      clearTimeout(reconnectTimer);
+      wsRef.current?.close();
     };
   }, [url]);
 

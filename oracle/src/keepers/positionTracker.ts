@@ -17,6 +17,7 @@ function getPublicClient() {
     publicClient = createPublicClient({
       chain: creditcoinLocal,
       transport: http(config.rpcUrl),
+      pollingInterval: 1_000,
     });
   }
   return publicClient;

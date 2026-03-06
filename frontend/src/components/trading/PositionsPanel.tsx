@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useAccount, useReadContracts } from "wagmi";
-import { parseUnits, formatEther, type Address } from "viem";
+import { useAccount, useReadContracts, usePublicClient } from "wagmi";
+import { parseUnits, formatEther, decodeEventLog, type Address } from "viem";
 import toast from "react-hot-toast";
 import { CONTRACTS, TRADING_ABI, ERC20_ABI, CUSTODY_ADDRESSES, CUSTODY_ABI } from "../../lib/contracts";
 import { useContractWrite } from "../../hooks/useContractWrite";
+import { PnLPopup } from "./PnLPopup";
 import type { PositionUpdate } from "../../hooks/useWebSocket";
 
 const MIN_OPEN_TIME_TRADING = 300; // seconds — must match Trading.sol
@@ -19,6 +20,7 @@ interface PositionData {
   sizeUsd: string;
   entryPrice: string;
   status?: string;
+  realizedPnl?: string;
   type: "trading" | "p2p";
   openedAt?: string; // ISO string from DB or epoch seconds string from in-memory
 }
@@ -40,6 +42,7 @@ export function PositionsPanel({
   onPositionUpdate: (cb: (update: PositionUpdate) => void) => () => void;
 }) {
   const { address } = useAccount();
+  const publicClient = usePublicClient();
   const { execute, isPending } = useContractWrite();
   const [tab, setTab] = useState<Tab>("trading");
   const [tradingPositions, setTradingPositions] = useState<PositionData[]>([]);
@@ -48,6 +51,17 @@ export function PositionsPanel({
   const [loading, setLoading] = useState(false);
   const [addCollateralId, setAddCollateralId] = useState<string | null>(null);
   const [addCollateralAmount, setAddCollateralAmount] = useState("");
+  const [pnlPopup, setPnlPopup] = useState<{
+    isOpen: boolean;
+    pnlUsd: number;
+    pnlPercent: number;
+    collateral: number;
+    sizeUsd: number;
+    leverage: number;
+    asset: string;
+    isLong: boolean;
+    entryPrice: number;
+  } | null>(null);
 
   // Fetch custody fee state for all feeds with positions
   const feedIds = [...new Set(tradingPositions.map((p) => p.feedId))];
@@ -185,27 +199,52 @@ export function PositionsPanel({
     if (!onPositionUpdate) return;
 
     const unsub = onPositionUpdate((update: PositionUpdate) => {
-      if (update.action === "opened") {
-        const pos = update.position;
-        if (
-          address &&
-          (pos.owner as string)?.toLowerCase() === address.toLowerCase()
-        ) {
-          if (update.positionType === "trading") fetchTrading();
-          else fetchP2P();
+      const pos = update.position;
+      const isOwner = address && (pos.owner as string)?.toLowerCase() === address.toLowerCase();
+
+      if (update.action === "opened" && isOwner) {
+        // Add directly to local state — avoids race with async DB write
+        const newPos: PositionData = {
+          positionId: pos.positionId as `0x${string}`,
+          feedId: pos.feedId as number,
+          isLong: pos.isLong as boolean,
+          collateral: (pos.collateral as string) ?? "0",
+          sizeUsd: (pos.sizeUsd as string) ?? "0",
+          entryPrice: (pos.entryPrice as string) ?? "0",
+          status: "open",
+          type: update.positionType,
+          openedAt: new Date().toISOString(),
+        };
+        if (update.positionType === "trading") {
+          setTradingPositions((prev) =>
+            prev.some((p) => p.positionId === newPos.positionId) ? prev : [...prev, newPos]
+          );
+        } else {
+          setP2PPositions((prev) =>
+            prev.some((p) => p.positionId === newPos.positionId) ? prev : [...prev, newPos]
+          );
         }
       } else if (
         update.action === "closed" ||
         update.action === "liquidated"
       ) {
-        const posId = update.position.positionId as string;
+        const posId = pos.positionId as string;
         setTradingPositions((prev) =>
           prev.filter((p) => p.positionId !== posId)
         );
-      } else if (update.action === "collateralAdded") {
-        fetchTrading();
+        // Refresh history if on that tab
+        if (tab === "history") fetchHistory();
+      } else if (update.action === "collateralAdded" && isOwner) {
+        // Update collateral directly in local state
+        const posId = pos.positionId as string;
+        const newCol = (pos.newCollateral as string) ?? (pos.collateral as string);
+        if (newCol) {
+          setTradingPositions((prev) =>
+            prev.map((p) => p.positionId === posId ? { ...p, collateral: newCol } : p)
+          );
+        }
       } else if (update.action === "settled") {
-        const posId = update.position.positionId as string;
+        const posId = pos.positionId as string;
         if (posId) {
           setP2PPositions((prev) =>
             prev.filter((p) => p.positionId !== posId)
@@ -213,14 +252,15 @@ export function PositionsPanel({
         } else {
           fetchP2P();
         }
+        if (tab === "history") fetchHistory();
       }
     });
 
     return unsub;
-  }, [onPositionUpdate, address, fetchTrading, fetchP2P]);
+  }, [onPositionUpdate, address, tab, fetchTrading, fetchP2P, fetchHistory]);
 
-  const handleClose = (pos: PositionData) => {
-    if (!CONTRACTS.trading) return;
+  const handleClose = async (pos: PositionData) => {
+    if (!CONTRACTS.trading || !publicClient) return;
 
     // Pre-flight: check min open time before sending tx
     if (pos.openedAt) {
@@ -239,7 +279,7 @@ export function PositionsPanel({
       }
     }
 
-    execute(
+    const hash = await execute(
       {
         address: CONTRACTS.trading as Address,
         abi: TRADING_ABI,
@@ -248,6 +288,44 @@ export function PositionsPanel({
       },
       "Closing position"
     );
+
+    if (hash) {
+      try {
+        const receipt = await publicClient.getTransactionReceipt({ hash });
+        for (const log of receipt.logs) {
+          try {
+            const decoded = decodeEventLog({
+              abi: TRADING_ABI,
+              data: log.data,
+              topics: log.topics,
+            });
+            if (decoded.eventName === "PositionClosed") {
+              const realizedPnl = Number(formatEther((decoded.args as { realizedPnl: bigint }).realizedPnl));
+              const collateral = Number(pos.collateral) / 1e18;
+              const sizeUsd = Number(pos.sizeUsd) / 1e18;
+              const leverage = collateral > 0 ? sizeUsd / collateral : 0;
+              const pnlPercent = collateral > 0 ? (realizedPnl / collateral) * 100 : 0;
+              setPnlPopup({
+                isOpen: true,
+                pnlUsd: realizedPnl,
+                pnlPercent,
+                collateral,
+                sizeUsd,
+                leverage,
+                asset: FEED_NAMES[pos.feedId] ?? `Feed ${pos.feedId}`,
+                isLong: pos.isLong,
+                entryPrice: Number(pos.entryPrice) / 1e18,
+              });
+              break;
+            }
+          } catch {
+            // Not our event, skip
+          }
+        }
+      } catch {
+        // Receipt fetch failed, no popup
+      }
+    }
   };
 
   const handleAddCollateral = async (pos: PositionData) => {
@@ -375,6 +453,11 @@ export function PositionsPanel({
             const sizeUsd = Number(pos.sizeUsd);
             const leverage = collateral > 0 ? sizeUsd / collateral : 0;
             const isOpen = pos.status === "open" || !pos.status;
+            const historyPnl = !isOpen && pos.realizedPnl ? (() => {
+              const realized = Number(pos.realizedPnl) / 1e18;
+              const col = Number(pos.collateral) / 1e18;
+              return { pnlUsd: realized, pnlPercent: col > 0 ? (realized / col) * 100 : 0 };
+            })() : null;
             const feeCosts = pos.type === "trading" && isOpen ? getFeeCosts(pos) : null;
 
             return (
@@ -489,6 +572,28 @@ export function PositionsPanel({
                       </p>
                     </div>
                   )}
+                  {historyPnl && (
+                    <div className="text-right">
+                      <p
+                        className={`text-sm font-mono ${
+                          historyPnl.pnlUsd >= 0 ? "text-green-400" : "text-red-400"
+                        }`}
+                      >
+                        {historyPnl.pnlUsd >= 0 ? "+$" : "-$"}
+                        {Math.abs(historyPnl.pnlUsd).toFixed(2)}
+                      </p>
+                      <p
+                        className={`text-xs ${
+                          historyPnl.pnlPercent >= 0
+                            ? "text-green-500"
+                            : "text-red-500"
+                        }`}
+                      >
+                        {historyPnl.pnlPercent >= 0 ? "+" : ""}
+                        {historyPnl.pnlPercent.toFixed(2)}%
+                      </p>
+                    </div>
+                  )}
                   {pos.type === "p2p" && isOpen && (
                     <span className="text-xs px-2 py-0.5 rounded bg-amber-900 text-amber-400">
                       Pending Settlement
@@ -549,6 +654,13 @@ export function PositionsPanel({
           P2P positions settle at market open with oracle price
         </p>
       )}
+
+      {pnlPopup && (
+        <PnLPopup
+          {...pnlPopup}
+          onClose={() => setPnlPopup(null)}
+        />
+      )}
     </div>
   );
 }
@@ -562,6 +674,7 @@ function mapRow(row: any, type: "trading" | "p2p"): PositionData {
     sizeUsd: row.sizeUsd?.toString() ?? "0",
     entryPrice: row.entryPrice?.toString() ?? "0",
     status: row.status,
+    realizedPnl: row.realizedPnl?.toString() ?? undefined,
     type,
     openedAt: row.openedAt ?? row.openTimestamp,
   };
