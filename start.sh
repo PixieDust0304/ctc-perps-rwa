@@ -91,7 +91,7 @@ if command -v psql &>/dev/null; then
     log "PostgreSQL database wiped and recreated."
     # Push Prisma schema to fresh database
     cd "$ORACLE_DIR"
-    DATABASE_URL="$DB_URL" npx prisma db push --skip-generate --accept-data-loss 2>&1
+    DATABASE_URL="$DB_URL" npx prisma db push --accept-data-loss 2>&1
     if [ $? -eq 0 ]; then
       log "Prisma schema pushed successfully."
     else
