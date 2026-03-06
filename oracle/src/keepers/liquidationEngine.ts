@@ -126,7 +126,7 @@ function isLiquidatable(
     effective -= pnl;
   }
 
-  // Liquidatable if below maintenance margin (30% of initial collateral)
+  // Liquidatable if below maintenance margin (10% of initial collateral)
   const maintenanceThreshold = (pos.collateral * MAINTENANCE_MARGIN_BPS) / BPS_DENOMINATOR;
   return effective < maintenanceThreshold;
 }

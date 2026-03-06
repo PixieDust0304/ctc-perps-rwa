@@ -1,21 +1,383 @@
 @import "tailwindcss";
 
+/* ═══════════════════════════════════════════════════════════
+   PERP MAN — Brand Design System
+   Arcade energy for perpetual trading
+   ═══════════════════════════════════════════════════════════ */
+
+/* ─── Brand Color Palette ──────────────────────────────── */
 :root {
-  --background: #0a0a0a;
-  --foreground: #ededed;
+  /* Core Backgrounds */
+  --void-black: #0A0A0A;
+  --coal-surface: #121212;
+  --coal-light: #1A1A1A;
+  --coal-lighter: #222222;
+  --coal-border: rgba(255, 255, 255, 0.06);
+  --coal-border-hover: rgba(255, 255, 255, 0.12);
+
+  /* Brand Energy */
+  --pixel-yellow: #FFD400;
+  --arcade-orange: #FF8A00;
+  --pixel-yellow-glow: rgba(255, 212, 0, 0.25);
+  --arcade-orange-glow: rgba(255, 138, 0, 0.2);
+
+  /* Trading States */
+  --profit-green: #00E676;
+  --trade-red: #FF3B3B;
+  --profit-green-glow: rgba(0, 230, 118, 0.25);
+  --trade-red-glow: rgba(255, 59, 59, 0.25);
+
+  /* Text */
+  --soft-white: #F5F5F5;
+  --muted-text: #888888;
+  --dim-text: #555555;
+
+  /* Legacy mappings */
+  --background: var(--void-black);
+  --foreground: var(--soft-white);
 }
 
 body {
-  color: var(--foreground);
-  background: var(--background);
-  font-family: system-ui, -apple-system, sans-serif;
+  color: var(--soft-white);
+  background: var(--void-black);
+  font-family: 'Space Grotesk', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  /* Pac-Man pixel cursor */
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32' style='image-rendering:pixelated'%3E%3Crect x='10' y='2' width='12' height='2' fill='%23FFD400'/%3E%3Crect x='6' y='4' width='20' height='2' fill='%23FFD400'/%3E%3Crect x='4' y='6' width='24' height='2' fill='%23FFD400'/%3E%3Crect x='2' y='8' width='26' height='2' fill='%23FFD400'/%3E%3Crect x='2' y='10' width='18' height='2' fill='%23FFD400'/%3E%3Crect x='2' y='12' width='14' height='2' fill='%23FFD400'/%3E%3Crect x='2' y='14' width='14' height='2' fill='%23FFD400'/%3E%3Crect x='2' y='16' width='18' height='2' fill='%23FFD400'/%3E%3Crect x='2' y='18' width='26' height='2' fill='%23FFD400'/%3E%3Crect x='2' y='20' width='28' height='2' fill='%23FFD400'/%3E%3Crect x='4' y='22' width='24' height='2' fill='%23FFD400'/%3E%3Crect x='6' y='24' width='20' height='2' fill='%23FFD400'/%3E%3Crect x='10' y='26' width='12' height='2' fill='%23FFD400'/%3E%3Crect x='12' y='6' width='4' height='4' fill='%230A0A0A'/%3E%3Crect x='14' y='6' width='2' height='2' fill='%23F5F5F5'/%3E%3C/svg%3E") 4 4, auto;
 }
 
+/* ─── Typography Classes ───────────────────────────────── */
+.font-pixel {
+  font-family: 'Pixelify Sans', 'Courier New', monospace;
+}
+
+.font-body {
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+}
+
+/* ─── Brand Glow System ────────────────────────────────── */
+.glow-brand {
+  box-shadow: 0 0 20px var(--pixel-yellow-glow), 0 0 60px var(--arcade-orange-glow);
+}
+
+.glow-profit {
+  box-shadow: 0 0 20px var(--profit-green-glow);
+}
+
+.glow-loss {
+  box-shadow: 0 0 20px var(--trade-red-glow);
+}
+
+.text-glow-brand {
+  text-shadow: 0 0 20px var(--pixel-yellow-glow), 0 0 40px var(--arcade-orange-glow);
+}
+
+.text-glow-profit {
+  text-shadow: 0 0 16px var(--profit-green-glow);
+}
+
+.text-glow-loss {
+  text-shadow: 0 0 16px var(--trade-red-glow);
+}
+
+/* ─── 3D Card System ───────────────────────────────────── */
+.card-surface {
+  background: var(--coal-surface);
+  border: 1px solid var(--coal-border);
+  border-radius: 12px;
+  box-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.4),
+    0 8px 16px rgba(0, 0, 0, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  animation: ambient-glow-pulse 5s ease-in-out infinite;
+}
+
+.card-surface:hover {
+  box-shadow:
+    0 4px 8px rgba(0, 0, 0, 0.5),
+    0 12px 24px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  border-color: var(--coal-border-hover);
+}
+
+.card-deep {
+  background: linear-gradient(160deg, var(--coal-surface) 0%, var(--void-black) 100%);
+  border: 1px solid var(--coal-border);
+  border-radius: 12px;
+  box-shadow:
+    0 4px 8px rgba(0, 0, 0, 0.5),
+    0 16px 32px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.02),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.3);
+}
+
+/* ─── Discord Sidebar ──────────────────────────────────── */
+.sidebar-dark {
+  background: linear-gradient(180deg, var(--coal-surface) 0%, var(--void-black) 100%);
+  border-right: 1px solid var(--coal-border);
+  box-shadow: 4px 0 16px rgba(0, 0, 0, 0.4);
+}
+
+/* ─── 3D Chart Wrapper ─────────────────────────────────── */
+.chart-3d-wrapper {
+  position: relative;
+  perspective: 1200px;
+}
+
+.chart-3d-inner {
+  transform: scale(1);
+  /* Static, stable positioning */
+  transform-origin: center center;
+  transition: transform 0.4s ease;
+  box-shadow:
+    0 20px 60px rgba(0, 0, 0, 0.6),
+    0 0 0 1px rgba(255, 212, 0, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  border-radius: 14px;
+  overflow: hidden;
+  animation: ambient-glow-pulse 6s ease-in-out infinite reverse;
+}
+
+
+
+/* Tetris grid overlay */
+.tetris-grid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+  background:
+    repeating-linear-gradient(90deg,
+      rgba(255, 212, 0, 0.012) 0px,
+      rgba(255, 212, 0, 0.012) 1px,
+      transparent 1px,
+      transparent 40px),
+    repeating-linear-gradient(0deg,
+      rgba(255, 212, 0, 0.012) 0px,
+      rgba(255, 212, 0, 0.012) 1px,
+      transparent 1px,
+      transparent 40px);
+  border-radius: 14px;
+}
+
+/* ─── Metallic Commodity Badges ────────────────────────── */
+.badge-gold {
+  background: linear-gradient(135deg, #FFD700 0%, #FFA500 25%, #FFD700 50%, #FFEC8B 75%, #FFD700 100%);
+  background-size: 200% 200%;
+  animation: metallic-shimmer 3s ease-in-out infinite;
+  color: #1a0f00;
+  font-weight: 700;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.3);
+  box-shadow: 0 2px 8px rgba(255, 215, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+}
+
+.badge-silver {
+  background: linear-gradient(135deg, #C0C0C0 0%, #E8E8E8 25%, #A9A9A9 50%, #D3D3D3 75%, #C0C0C0 100%);
+  background-size: 200% 200%;
+  animation: metallic-shimmer 3.5s ease-in-out infinite;
+  color: #1a1a1a;
+  font-weight: 700;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.4);
+  box-shadow: 0 2px 8px rgba(192, 192, 192, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+.badge-platinum {
+  background: linear-gradient(135deg, #E5E4E2 0%, #BCC6CC 25%, #E5E4E2 50%, #D8DEE3 75%, #E5E4E2 100%);
+  background-size: 200% 200%;
+  animation: metallic-shimmer 4s ease-in-out infinite;
+  color: #1a1a1a;
+  font-weight: 700;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.4);
+  box-shadow: 0 2px 8px rgba(229, 228, 226, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+.badge-crude {
+  background: linear-gradient(135deg, #2C1810 0%, #4A3728 25%, #1A0F0A 50%, #3D2B1F 75%, #2C1810 100%);
+  background-size: 200% 200%;
+  animation: metallic-shimmer 3.2s ease-in-out infinite;
+  color: #e8c87a;
+  font-weight: 700;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 2px 8px rgba(44, 24, 16, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+/* ─── Keyframe Animations ──────────────────────────────── */
+
+@keyframes metallic-shimmer {
+
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+@keyframes ambient-pulse {
+
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+
+  50% {
+    opacity: 0.6;
+  }
+}
+
+@keyframes ambient-glow-pulse {
+
+  0%,
+  100% {
+    box-shadow:
+      0 4px 12px rgba(0, 0, 0, 0.4),
+      inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  }
+
+  50% {
+    box-shadow:
+      0 4px 16px rgba(0, 0, 0, 0.6),
+      0 0 12px rgba(255, 212, 0, 0.03),
+      inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  }
+}
+
+/* Cake Mode: Confetti burst from center */
+@keyframes confetti-fly {
+  0% {
+    transform: translate(0, 0) rotate(0deg) scale(1);
+    opacity: 1;
+  }
+
+  70% {
+    opacity: 1;
+  }
+
+  100% {
+    transform: translate(var(--tx), var(--ty)) rotate(var(--tr)) scale(0.2);
+    opacity: 0;
+  }
+}
+
+/* Victory Duck bounce in */
+@keyframes duck-bounce {
+  0% {
+    opacity: 0;
+    transform: translateY(40px) scale(0.8);
+  }
+
+  50% {
+    opacity: 1;
+    transform: translateY(-10px) scale(1.05);
+  }
+
+  70% {
+    transform: translateY(4px) scale(0.97);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Cake pop in */
+@keyframes cake-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0) rotate(-10deg);
+  }
+
+  60% {
+    opacity: 1;
+    transform: scale(1.1) rotate(3deg);
+  }
+
+  100% {
+    opacity: 1;
+    transform: scale(1) rotate(0deg);
+  }
+}
+
+/* Pac-Man chomp */
+@keyframes pac-chomp {
+  0% {
+    clip-path: circle(50%);
+  }
+
+  25% {
+    clip-path: polygon(100% 50%, 50% 0%, 0% 0%, 0% 100%, 50% 100%);
+  }
+
+  50% {
+    clip-path: polygon(100% 50%, 70% 10%, 0% 0%, 0% 100%, 70% 90%);
+  }
+
+  75% {
+    clip-path: polygon(100% 50%, 50% 0%, 0% 0%, 0% 100%, 50% 100%);
+  }
+
+  100% {
+    clip-path: circle(50%);
+  }
+}
+
+/* Pellet pulse */
+@keyframes pellet-pulse {
+
+  0%,
+  100% {
+    opacity: 0.4;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 0.7;
+    transform: scale(1.3);
+  }
+}
+
+/* Score pop in */
+@keyframes score-pop {
+  0% {
+    transform: scale(0) rotate(-5deg);
+    opacity: 0;
+  }
+
+  60% {
+    transform: scale(1.08) rotate(2deg);
+    opacity: 1;
+  }
+
+  100% {
+    transform: scale(1) rotate(0deg);
+    opacity: 1;
+  }
+}
+
+/* Text fade in */
+@keyframes text-fade-in {
+  0% {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* PnL float particles */
 @keyframes pnl-float-up {
   0% {
     transform: translateY(0) scale(1);
     opacity: 0.6;
   }
+
   100% {
     transform: translateY(-120px) scale(0);
     opacity: 0;
@@ -24,4 +386,156 @@ body {
 
 .animate-pnl-float-up {
   animation: pnl-float-up 3s ease-out infinite;
+}
+
+/* Logo chomp loop */
+@keyframes logo-chomp {
+
+  0%,
+  100% {
+    clip-path: polygon(100% 50%, 85% 10%, 0% 0%, 0% 100%, 85% 90%);
+  }
+
+  50% {
+    clip-path: polygon(100% 50%, 50% 0%, 0% 0%, 0% 100%, 50% 100%);
+  }
+}
+
+/* ─── Beacon Laser Scanning ─────────────────────────────── */
+@keyframes laser-scan {
+  0% {
+    transform: translateX(-100%) skewX(-15deg);
+    opacity: 0;
+  }
+
+  10% {
+    opacity: 1;
+    transform: translateX(300%) skewX(-15deg);
+  }
+
+  50% {
+    opacity: 1;
+    transform: translateX(300%) skewX(-15deg);
+  }
+
+  60% {
+    transform: translateX(400%) skewX(-15deg);
+    opacity: 0;
+  }
+
+  100% {
+    transform: translateX(400%) skewX(-15deg);
+    opacity: 0;
+  }
+}
+
+.glow-text-brand {
+  color: var(--pixel-yellow);
+  text-shadow: 0 0 8px rgba(255, 212, 0, 0.3);
+}
+
+/* ─── Pixel Tile Page Transition ───────────────────────── */
+@keyframes pxDrop {
+  from {
+    transform: translateY(-101%);
+  }
+
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes pxRise {
+  from {
+    transform: translateY(0);
+  }
+
+  to {
+    transform: translateY(101%);
+  }
+}
+
+/* ─── Scrollbar ────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* ─── Pac-Man Pointer for Clickables ───────────────────── */
+a,
+button,
+[role="button"],
+input[type="range"],
+select,
+label[for],
+.cursor-pointer {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32' style='image-rendering:pixelated'%3E%3Crect x='10' y='2' width='12' height='2' fill='%23FF8A00'/%3E%3Crect x='6' y='4' width='20' height='2' fill='%23FF8A00'/%3E%3Crect x='4' y='6' width='24' height='2' fill='%23FFD400'/%3E%3Crect x='2' y='8' width='26' height='2' fill='%23FFD400'/%3E%3Crect x='2' y='10' width='18' height='2' fill='%23FFD400'/%3E%3Crect x='2' y='12' width='14' height='2' fill='%23FFD400'/%3E%3Crect x='2' y='14' width='14' height='2' fill='%23FFD400'/%3E%3Crect x='2' y='16' width='18' height='2' fill='%23FFD400'/%3E%3Crect x='2' y='18' width='26' height='2' fill='%23FFD400'/%3E%3Crect x='2' y='20' width='28' height='2' fill='%23FF8A00'/%3E%3Crect x='4' y='22' width='24' height='2' fill='%23FF8A00'/%3E%3Crect x='6' y='24' width='20' height='2' fill='%23FF8A00'/%3E%3Crect x='10' y='26' width='12' height='2' fill='%23FF8A00'/%3E%3Crect x='12' y='6' width='4' height='4' fill='%230A0A0A'/%3E%3Crect x='14' y='6' width='2' height='2' fill='%23F5F5F5'/%3E%3C/svg%3E") 4 4, pointer !important;
+}
+
+/* ─── Leverage Slider — Red → Gold → Green ─────────────── */
+input[type="range"] {
+  -webkit-appearance: none !important;
+  appearance: none !important;
+  width: 100% !important;
+  height: 8px !important;
+  border-radius: 4px !important;
+  background: linear-gradient(90deg, #FF3B3B 0%, #FFD400 50%, #00E676 100%) !important;
+  outline: none !important;
+  opacity: 0.9;
+  transition: opacity 0.15s;
+  border: none !important;
+  padding: 0 !important;
+}
+
+input[type="range"]:hover {
+  opacity: 1;
+}
+
+/* Slider thumb — WebKit */
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none !important;
+  appearance: none !important;
+  width: 20px !important;
+  height: 20px !important;
+  border-radius: 50% !important;
+  background: #FFD400 !important;
+  border: 2px solid #0A0A0A !important;
+  box-shadow: 0 0 10px rgba(255, 212, 0, 0.4), 0 2px 6px rgba(0, 0, 0, 0.6) !important;
+  margin-top: -6px;
+}
+
+/* WebKit track */
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 8px !important;
+  border-radius: 4px !important;
+  background: linear-gradient(90deg, #FF3B3B 0%, #FFD400 50%, #00E676 100%) !important;
+}
+
+/* Slider thumb — Firefox */
+input[type="range"]::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #FFD400;
+  border: 2px solid #0A0A0A;
+  box-shadow: 0 0 10px rgba(255, 212, 0, 0.4), 0 2px 6px rgba(0, 0, 0, 0.6);
+}
+
+/* Firefox track */
+input[type="range"]::-moz-range-track {
+  height: 8px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #FF3B3B 0%, #FFD400 50%, #00E676 100%);
 }

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useAccount, useReadContracts } from "wagmi";
 import { parseEther, formatEther, type Address } from "viem";
 import { CONTRACTS, TRADING_ABI, P2P_TRADING_ABI, ERC20_ABI, CUSTODY_ABI, CUSTODY_ADDRESSES } from "../../lib/contracts";
+import { IconDollar } from "../AppSidebar";
 import { useContractWrite } from "../../hooks/useContractWrite";
 
 interface OrderPanelProps {
@@ -115,37 +116,43 @@ export function OrderPanel({
 
   return (
     <div className="flex flex-col flex-1 space-y-4">
-      <h3 className="text-lg font-semibold text-white">
-        {isMarketOpen ? "Open Position" : "Open P2P Position"}
+      <h3 className="text-sm font-pixel font-bold uppercase tracking-wider" style={{ color: "var(--muted-text)" }}>
+        {isMarketOpen ? "Open Position" : "P2P Position"}
       </h3>
 
       {/* Long/Short Toggle */}
       <div className="grid grid-cols-2 gap-2">
         <button
           onClick={() => setIsLong(true)}
-          className={`py-2 rounded-lg font-medium transition-colors ${
-            isLong
-              ? "bg-green-600 text-white"
-              : "bg-gray-800 text-gray-400 hover:bg-gray-700"
-          }`}
+          className={`py-2.5 rounded-xl font-pixel font-bold text-sm transition-all ${isLong ? "text-black" : "text-gray-400 hover:text-gray-200"}`}
+          style={isLong ? {
+            background: "linear-gradient(135deg, var(--pixel-yellow), var(--arcade-orange))",
+            boxShadow: "0 4px 12px var(--pixel-yellow-glow), inset 0 1px 0 rgba(255,255,255,0.3)",
+          } : {
+            background: "var(--coal-lighter)",
+            border: "1px solid var(--coal-border)",
+          }}
         >
-          Long
+          ▲ Long
         </button>
         <button
           onClick={() => setIsLong(false)}
-          className={`py-2 rounded-lg font-medium transition-colors ${
-            !isLong
-              ? "bg-red-600 text-white"
-              : "bg-gray-800 text-gray-400 hover:bg-gray-700"
-          }`}
+          className={`py-2.5 rounded-xl font-pixel font-bold text-sm transition-all ${!isLong ? "text-white" : "text-gray-400 hover:text-gray-200"}`}
+          style={!isLong ? {
+            background: "linear-gradient(135deg, var(--trade-red), #D50000)",
+            boxShadow: "0 4px 12px var(--trade-red-glow), inset 0 1px 0 rgba(255,255,255,0.1)",
+          } : {
+            background: "var(--coal-lighter)",
+            border: "1px solid var(--coal-border)",
+          }}
         >
-          Short
+          ▼ Short
         </button>
       </div>
 
       {/* Collateral Input */}
       <div>
-        <label className="block text-sm text-gray-400 mb-1">
+        <label className="block text-xs font-pixel mb-1 font-semibold uppercase tracking-wider" style={{ color: "var(--dim-text)" }}>
           Collateral (USDC)
         </label>
         <input
@@ -153,14 +160,21 @@ export function OrderPanel({
           value={collateral}
           onChange={(e) => setCollateral(e.target.value)}
           placeholder="1000"
-          className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white"
+          className="w-full rounded-xl px-3 py-2.5 text-white font-body text-sm outline-none transition-all"
+          style={{
+            background: "var(--void-black)",
+            border: "1px solid var(--coal-border)",
+            boxShadow: "inset 0 2px 4px rgba(0,0,0,0.3)",
+          }}
+          onFocus={(e) => { e.target.style.borderColor = "rgba(255, 212, 0, 0.3)"; e.target.style.boxShadow = "inset 0 2px 4px rgba(0,0,0,0.3), 0 0 0 2px rgba(255, 212, 0, 0.08)"; }}
+          onBlur={(e) => { e.target.style.borderColor = "var(--coal-border)"; e.target.style.boxShadow = "inset 0 2px 4px rgba(0,0,0,0.3)"; }}
         />
       </div>
 
       {/* Leverage Slider */}
       <div>
-        <label className="block text-sm text-gray-400 mb-1">
-          Leverage: {leverage}x
+        <label className="block text-xs font-pixel mb-1 font-semibold uppercase tracking-wider" style={{ color: "var(--dim-text)" }}>
+          Leverage: <span style={{ color: "var(--pixel-yellow)" }}>{leverage}x</span>
         </label>
         <input
           type="range"
@@ -180,37 +194,48 @@ export function OrderPanel({
       </div>
 
       {/* Order Summary */}
-      <div className="bg-gray-800 rounded-lg p-3 space-y-1 text-sm">
+      <div
+        className="rounded-xl p-3 space-y-1.5 text-sm"
+        style={{
+          background: "var(--void-black)",
+          border: "1px solid var(--coal-border)",
+          boxShadow: "inset 0 2px 4px rgba(0,0,0,0.2)",
+        }}
+      >
         <div className="flex justify-between">
-          <span className="text-gray-400">Position Size</span>
-          <span className="text-white">${sizeUsd.toFixed(2)}</span>
+          <span className="text-xs font-pixel" style={{ color: "var(--dim-text)" }}>Position Size</span>
+          <span className="font-body text-xs" style={{ color: "var(--soft-white)" }}>${sizeUsd.toFixed(2)}</span>
         </div>
         <div className="flex justify-between">
-          <span className="text-gray-400">Entry Price</span>
-          <span className="text-white">${currentPrice.toFixed(2)}</span>
+          <span className="text-xs font-pixel" style={{ color: "var(--dim-text)" }}>Entry Price</span>
+          <span className="font-body text-xs" style={{ color: "var(--soft-white)" }}>${currentPrice.toFixed(2)}</span>
         </div>
         <div className="flex justify-between">
-          <span className="text-gray-400">Open Fee (0.1%)</span>
-          <span className="text-white">${openFee.toFixed(2)}</span>
+          <span className="text-xs font-pixel" style={{ color: "var(--dim-text)" }}>Open Fee (0.1%)</span>
+          <span className="font-body text-xs" style={{ color: "var(--soft-white)" }}>${openFee.toFixed(2)}</span>
         </div>
         <div className="flex justify-between">
-          <span className="text-gray-400">Liq. Price</span>
-          <span className="text-orange-400 font-mono">
+          <span className="text-xs font-pixel" style={{ color: "var(--dim-text)" }}>Liq. Price</span>
+          <span className="font-body text-xs" style={{ color: "var(--arcade-orange)" }}>
             {liqPrice > 0 ? `$${liqPrice.toFixed(2)}` : "\u2014"}
           </span>
         </div>
         {availableLiq !== null && (
-          <div className="flex justify-between">
-            <span className="text-gray-400">Avail. Liquidity</span>
-            <span className={exceedsLiquidity ? "text-red-400 font-medium" : "text-gray-300"}>
-              ${availableLiq.toFixed(0)}
+          <div className="flex justify-between items-center">
+            <div className="flex items-center gap-1.5">
+              <span style={{ color: "var(--pixel-yellow)" }}>
+                <IconDollar size={12} />
+              </span>
+              <span className="text-xs font-pixel" style={{ color: "var(--dim-text)" }}>Avail. Liquidity</span>
+            </div>
+            <span className={`font-body text-xs font-semibold`} style={{ color: exceedsLiquidity ? "var(--trade-red)" : "var(--profit-green)", textShadow: exceedsLiquidity ? "none" : "0 0 6px rgba(0, 230, 118, 0.2)" }}>
+              ${availableLiq.toLocaleString(undefined, { maximumFractionDigits: 0 })}
             </span>
           </div>
         )}
         {feePercent >= 5 && (
-          <div className="text-amber-400 text-xs mt-1">
-            Warning: Open+close fees = {(feePercent * 2).toFixed(1)}% of
-            collateral at {leverage}x leverage
+          <div className="text-[10px] mt-1 px-2 py-1 rounded-lg font-pixel" style={{ color: "var(--arcade-orange)", background: "rgba(255, 138, 0, 0.08)" }}>
+            ⚠ Open+close fees = {(feePercent * 2).toFixed(1)}% of collateral at {leverage}x
           </div>
         )}
       </div>
@@ -227,11 +252,24 @@ export function OrderPanel({
       <button
         onClick={handleApproveAndOpen}
         disabled={!isConnected || isPending || collateralNum <= 0 || exceedsLiquidity}
-        className={`w-full py-3 rounded-lg font-medium text-white transition-colors ${
-          isLong
-            ? "bg-green-600 hover:bg-green-700 disabled:bg-green-900"
-            : "bg-red-600 hover:bg-red-700 disabled:bg-red-900"
-        } disabled:opacity-50 disabled:cursor-not-allowed`}
+        className={`w-full py-3 rounded-xl font-pixel font-bold text-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed ${isLong
+          ? "text-black hover:brightness-110"
+          : "text-white hover:brightness-110"
+          }`}
+        style={{
+          background: isLong
+            ? (!isConnected || isPending || collateralNum <= 0 || exceedsLiquidity)
+              ? "#3d3200"
+              : "linear-gradient(135deg, var(--pixel-yellow), var(--arcade-orange))"
+            : (!isConnected || isPending || collateralNum <= 0 || exceedsLiquidity)
+              ? "#4a0000"
+              : "linear-gradient(135deg, var(--trade-red), #D50000)",
+          boxShadow: (!isConnected || isPending || collateralNum <= 0 || exceedsLiquidity)
+            ? "none"
+            : isLong
+              ? "0 4px 16px var(--pixel-yellow-glow), inset 0 1px 0 rgba(255,255,255,0.2)"
+              : "0 4px 16px var(--trade-red-glow), inset 0 1px 0 rgba(255,255,255,0.1)",
+        }}
       >
         {!isConnected
           ? "Connect Wallet"
@@ -239,7 +277,7 @@ export function OrderPanel({
             ? "Confirming..."
             : exceedsLiquidity
               ? "Insufficient Liquidity"
-              : `${isMarketOpen ? "" : "P2P "}${isLong ? "Long" : "Short"} ${sizeUsd.toFixed(0)} USD`}
+              : `${isMarketOpen ? "" : "P2P "}${isLong ? "▲ Long" : "▼ Short"} ${sizeUsd.toFixed(0)} USD`}
       </button>
     </div>
   );

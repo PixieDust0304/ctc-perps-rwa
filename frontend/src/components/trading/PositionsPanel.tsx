@@ -152,7 +152,7 @@ export function PositionsPanel({
         const data = await res.json();
         setTradingPositions(data.map((row: any) => mapRow(row, "trading")));
       }
-    } catch {}
+    } catch { }
   }, [address]);
 
   const fetchP2P = useCallback(async () => {
@@ -165,7 +165,7 @@ export function PositionsPanel({
         const data = await res.json();
         setP2PPositions(data.map((row: any) => mapRow(row, "p2p")));
       }
-    } catch {}
+    } catch { }
   }, [address]);
 
   const fetchHistory = useCallback(async () => {
@@ -180,7 +180,7 @@ export function PositionsPanel({
           data.map((row: any) => mapRow(row, row.type ?? "trading"))
         );
       }
-    } catch {}
+    } catch { }
   }, [address]);
 
   const fetchCurrent = useCallback(() => {
@@ -385,7 +385,34 @@ export function PositionsPanel({
     return pos.isLong ? entry * (1 - moveToLiq) : entry * (1 + moveToLiq);
   };
 
-  if (!address) return null;
+  if (!address) {
+    return (
+      <div
+        className="rounded-lg p-4"
+        style={{
+          background: "linear-gradient(145deg, #1c1c1c 0%, #111111 50%, #181818 100%)",
+          border: "1px solid rgba(255, 212, 0, 0.06)",
+        }}
+      >
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex gap-1">
+            {["Trading", "P2P", "History"].map((label) => (
+              <span
+                key={label}
+                className="px-3 py-1.5 text-sm font-pixel rounded-md"
+                style={{ color: "var(--dim-text)" }}
+              >
+                {label}
+              </span>
+            ))}
+          </div>
+        </div>
+        <p className="text-sm font-pixel" style={{ color: "var(--dim-text)" }}>
+          Connect wallet to view positions
+        </p>
+      </div>
+    );
+  }
 
   const positions =
     tab === "trading"
@@ -401,27 +428,34 @@ export function PositionsPanel({
   ];
 
   return (
-    <div className="bg-gray-900 rounded-lg p-4">
+    <div
+      className="rounded-lg p-4"
+      style={{
+        background: "linear-gradient(145deg, #1c1c1c 0%, #111111 50%, #181818 100%)",
+        border: "1px solid rgba(255, 212, 0, 0.06)",
+      }}
+    >
       <div className="flex items-center justify-between mb-3">
         <div className="flex gap-1">
           {tabs.map((t) => (
             <button
               key={t.key}
               onClick={() => setTab(t.key)}
-              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
-                tab === t.key
-                  ? "bg-gray-700 text-white"
-                  : "text-gray-400 hover:text-gray-200 hover:bg-gray-800"
-              }`}
+              className={`px-3 py-1.5 text-sm font-pixel font-medium rounded-md transition-all ${tab === t.key
+                ? "text-black font-bold"
+                : "hover:bg-gray-800"
+                }`}
+              style={tab === t.key ? {
+                background: "linear-gradient(135deg, var(--pixel-yellow), var(--arcade-orange))",
+              } : { color: "var(--muted-text)" }}
             >
               {t.label}
               {t.count > 0 && (
                 <span
-                  className={`ml-1.5 text-xs px-1.5 py-0.5 rounded-full ${
-                    tab === t.key
-                      ? "bg-gray-600 text-gray-200"
-                      : "bg-gray-800 text-gray-500"
-                  }`}
+                  className={`ml-1.5 text-xs px-1.5 py-0.5 rounded-full ${tab === t.key
+                    ? "bg-yellow-900 text-yellow-300"
+                    : "bg-gray-800 text-gray-500"
+                    }`}
                 >
                   {t.count}
                 </span>
@@ -431,16 +465,17 @@ export function PositionsPanel({
         </div>
         <button
           onClick={fetchCurrent}
-          className="text-xs text-gray-400 hover:text-white"
+          className="text-xs font-pixel hover:text-white transition-colors"
+          style={{ color: "var(--muted-text)" }}
         >
           Refresh
         </button>
       </div>
 
       {loading && positions.length === 0 ? (
-        <p className="text-gray-500 text-sm">Loading...</p>
+        <p className="text-sm font-pixel" style={{ color: "var(--dim-text)" }}>Loading...</p>
       ) : positions.length === 0 ? (
-        <p className="text-gray-500 text-sm">
+        <p className="text-sm font-pixel" style={{ color: "var(--dim-text)" }}>
           {tab === "history"
             ? "No position history"
             : `No open ${tab === "p2p" ? "P2P " : ""}positions`}
@@ -463,9 +498,12 @@ export function PositionsPanel({
             return (
               <div
                 key={`${pos.type}-${pos.positionId}`}
-                className={`bg-gray-800 rounded-lg p-3 flex items-center justify-between ${
-                  !isOpen ? "opacity-60" : ""
-                }`}
+                className={`rounded-lg p-3 flex items-center justify-between transition-all ${!isOpen ? "opacity-60" : ""
+                  }`}
+                style={{
+                  background: "linear-gradient(145deg, #1a1a1a 0%, #141414 50%, #1a1a1a 100%)",
+                  border: isOpen ? "1px solid rgba(255, 215, 0, 0.08)" : "1px solid rgba(255, 255, 255, 0.03)",
+                }}
               >
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
@@ -475,11 +513,10 @@ export function PositionsPanel({
                       </span>
                     )}
                     <span
-                      className={`text-xs font-bold px-2 py-0.5 rounded ${
-                        pos.isLong
-                          ? "bg-green-900 text-green-400"
-                          : "bg-red-900 text-red-400"
-                      }`}
+                      className={`text-xs font-bold px-2 py-0.5 rounded ${pos.isLong
+                        ? "bg-green-900 text-green-400"
+                        : "bg-red-900 text-red-400"
+                        }`}
                     >
                       {pos.isLong ? "LONG" : "SHORT"}
                     </span>
@@ -491,13 +528,12 @@ export function PositionsPanel({
                     </span>
                     {pos.status && pos.status !== "open" && (
                       <span
-                        className={`text-xs px-2 py-0.5 rounded ${
-                          pos.status === "closed"
-                            ? "bg-gray-700 text-gray-400"
-                            : pos.status === "liquidated"
-                              ? "bg-red-900/50 text-red-400"
-                              : "bg-amber-900/50 text-amber-400"
-                        }`}
+                        className={`text-xs px-2 py-0.5 rounded ${pos.status === "closed"
+                          ? "bg-gray-700 text-gray-400"
+                          : pos.status === "liquidated"
+                            ? "bg-red-900/50 text-red-400"
+                            : "bg-amber-900/50 text-amber-400"
+                          }`}
                       >
                         {pos.status}
                       </span>
@@ -553,19 +589,17 @@ export function PositionsPanel({
                   {pnl && (
                     <div className="text-right">
                       <p
-                        className={`text-sm font-mono ${
-                          pnl.pnlUsd >= 0 ? "text-green-400" : "text-red-400"
-                        }`}
+                        className={`text-sm font-mono ${pnl.pnlUsd >= 0 ? "text-yellow-400" : "text-red-400"
+                          }`}
                       >
                         {pnl.pnlUsd >= 0 ? "+" : ""}
                         {pnl.pnlUsd.toFixed(2)} USD
                       </p>
                       <p
-                        className={`text-xs ${
-                          pnl.pnlPercent >= 0
-                            ? "text-green-500"
-                            : "text-red-500"
-                        }`}
+                        className={`text-xs ${pnl.pnlPercent >= 0
+                          ? "text-yellow-500"
+                          : "text-red-500"
+                          }`}
                       >
                         {pnl.pnlPercent >= 0 ? "+" : ""}
                         {pnl.pnlPercent.toFixed(2)}%
@@ -575,19 +609,17 @@ export function PositionsPanel({
                   {historyPnl && (
                     <div className="text-right">
                       <p
-                        className={`text-sm font-mono ${
-                          historyPnl.pnlUsd >= 0 ? "text-green-400" : "text-red-400"
-                        }`}
+                        className={`text-sm font-mono ${historyPnl.pnlUsd >= 0 ? "text-yellow-400" : "text-red-400"
+                          }`}
                       >
                         {historyPnl.pnlUsd >= 0 ? "+$" : "-$"}
                         {Math.abs(historyPnl.pnlUsd).toFixed(2)}
                       </p>
                       <p
-                        className={`text-xs ${
-                          historyPnl.pnlPercent >= 0
-                            ? "text-green-500"
-                            : "text-red-500"
-                        }`}
+                        className={`text-xs ${historyPnl.pnlPercent >= 0
+                          ? "text-yellow-500"
+                          : "text-red-500"
+                          }`}
                       >
                         {historyPnl.pnlPercent >= 0 ? "+" : ""}
                         {historyPnl.pnlPercent.toFixed(2)}%

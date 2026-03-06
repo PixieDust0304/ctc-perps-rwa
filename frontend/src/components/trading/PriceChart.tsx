@@ -124,17 +124,17 @@ export function PriceChart({
 
     const chart = createChart(containerRef.current, {
       layout: {
-        background: { type: ColorType.Solid, color: "#111827" },
-        textColor: "#9CA3AF",
+        background: { type: ColorType.Solid, color: "#121212" },
+        textColor: "#555555",
       },
       grid: {
-        vertLines: { color: "#1F2937" },
-        horzLines: { color: "#1F2937" },
+        vertLines: { color: "rgba(255, 212, 0, 0.02)" },
+        horzLines: { color: "rgba(255, 212, 0, 0.02)" },
       },
       crosshair: { mode: 0 },
-      rightPriceScale: { borderColor: "#374151", autoScale: true },
+      rightPriceScale: { borderColor: "rgba(255, 255, 255, 0.06)", autoScale: true },
       timeScale: {
-        borderColor: "#374151",
+        borderColor: "rgba(255, 255, 255, 0.06)",
         timeVisible: true,
         secondsVisible: false,
         rightOffset: 5,
@@ -144,13 +144,13 @@ export function PriceChart({
     });
 
     const series = chart.addLineSeries({
-      color: "#22C55E",
+      color: "#FFD400",
       lineWidth: 2,
       crosshairMarkerVisible: true,
       crosshairMarkerRadius: 4,
       lastValueVisible: true,
       priceLineVisible: true,
-      priceLineColor: "#22C55E",
+      priceLineColor: "#FFD400",
       priceLineWidth: 1,
       priceLineStyle: 2,
     });
@@ -225,7 +225,7 @@ export function PriceChart({
 
   const priceColor = flash
     ? priceDirection === "up"
-      ? fading ? "text-white" : "text-green-400"
+      ? fading ? "text-white" : "text-yellow-400"
       : priceDirection === "down"
         ? fading ? "text-white" : "text-red-400"
         : "text-white"
@@ -233,15 +233,15 @@ export function PriceChart({
 
   const flashBg = flash
     ? priceDirection === "up"
-      ? fading ? "bg-transparent" : "bg-green-500/20"
+      ? fading ? "bg-transparent" : "bg-yellow-500/15"
       : priceDirection === "down"
-        ? fading ? "bg-transparent" : "bg-red-500/20"
+        ? fading ? "bg-transparent" : "bg-red-500/15"
         : ""
     : "";
 
   const movementColor = movement
     ? movement.changePercent > 0
-      ? "text-green-400"
+      ? "text-yellow-400"
       : movement.changePercent < 0
         ? "text-red-400"
         : "text-gray-400"
@@ -250,37 +250,40 @@ export function PriceChart({
   const movementSign = movement && movement.changePercent > 0 ? "+" : "";
 
   return (
-    <div>
+    <div style={{ background: "#121212" }}>
       {/* Header: feed name, price, movement + interval selector */}
-      <div className="flex items-center justify-between px-3 py-2">
+      <div className="flex items-center justify-between px-4 py-2.5" style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
         <div className="flex items-center gap-3">
-          <span className="text-gray-400 text-sm">{feedName} / USD</span>
+          <span className="font-pixel text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--dim-text)" }}>{feedName} / USD</span>
           <span
-            className={`text-lg font-mono px-2 py-0.5 rounded transition-all duration-1000 ${priceColor} ${flashBg}`}
+            className={`text-xl font-body font-bold px-2 py-0.5 rounded-lg transition-all duration-1000 ${priceColor} ${flashBg}`}
           >
             ${currentPrice > 0 ? currentPrice.toFixed(2) : "---"}
-            {priceDirection === "up" && <span className="ml-1 text-xs">&#9650;</span>}
-            {priceDirection === "down" && <span className="ml-1 text-xs">&#9660;</span>}
+            {priceDirection === "up" && <span className="ml-1 text-xs" style={{ color: "var(--profit-green)" }}>▲</span>}
+            {priceDirection === "down" && <span className="ml-1 text-xs" style={{ color: "var(--trade-red)" }}>▼</span>}
           </span>
           {movement && (
-            <span className={`text-sm font-mono ${movementColor}`}>
+            <span className={`text-xs font-body font-semibold ${movementColor}`}>
               {movementSign}{movement.changePercent.toFixed(2)}%
-              <span className="text-gray-500 ml-1 text-xs">{movementLookback > selected.lookbackMs ? "5m" : selected.label}</span>
+              <span className="ml-1 text-[10px]" style={{ color: "var(--dim-text)" }}>{movementLookback > selected.lookbackMs ? "5m" : selected.label}</span>
             </span>
           )}
         </div>
 
-        {/* Interval selector */}
+        {/* Tetris-style interval selector */}
         <div className="flex gap-0.5 flex-wrap justify-end">
           {INTERVALS.map((iv, idx) => (
             <button
               key={iv.label}
               onClick={() => setSelectedIdx(idx)}
-              className={`px-2 py-0.5 rounded text-xs font-medium transition-colors ${
-                idx === selectedIdx
-                  ? "bg-blue-600 text-white"
-                  : "bg-gray-800/80 text-gray-400 hover:bg-gray-700 hover:text-gray-200"
-              }`}
+              className={`px-2 py-1 rounded-md text-[10px] font-pixel font-bold uppercase tracking-wide transition-all ${idx === selectedIdx
+                ? "text-black"
+                : "hover:bg-white/[0.04]"
+                }`}
+              style={idx === selectedIdx ? {
+                background: "linear-gradient(135deg, var(--pixel-yellow), var(--arcade-orange))",
+                boxShadow: "0 2px 8px var(--pixel-yellow-glow)",
+              } : { color: "var(--dim-text)" }}
             >
               {iv.label}
             </button>
