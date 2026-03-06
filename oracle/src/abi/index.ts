@@ -77,6 +77,28 @@ export const TradingABI = [
 
 export const P2PTradingABI = [
   {
+    name: "positions",
+    type: "function",
+    inputs: [{ name: "positionId", type: "bytes32" }],
+    outputs: [
+      {
+        name: "",
+        type: "tuple",
+        components: [
+          { name: "owner", type: "address" },
+          { name: "feedId", type: "uint16" },
+          { name: "isLong", type: "bool" },
+          { name: "collateral", type: "uint256" },
+          { name: "sizeUsd", type: "uint256" },
+          { name: "entryPrice", type: "uint256" },
+          { name: "openTimestamp", type: "uint256" },
+          { name: "isSettled", type: "bool" },
+        ],
+      },
+    ],
+    stateMutability: "view",
+  },
+  {
     name: "settleP2PBatch",
     type: "function",
     inputs: [

@@ -5,7 +5,7 @@ import { MarketSelector } from "../components/trading/MarketSelector";
 import { OrderPanel } from "../components/trading/OrderPanel";
 import { MarketStatusBanner } from "../components/trading/MarketStatusBanner";
 import { PriceChart } from "../components/trading/PriceChart";
-import { PositionList } from "../components/trading/PositionList";
+import { PositionsPanel } from "../components/trading/PositionsPanel";
 import { CustodyLiquidity } from "../components/trading/CustodyLiquidity";
 import { FaucetButton } from "../components/trading/FaucetButton";
 import { usePrices } from "../hooks/usePrices";
@@ -13,7 +13,7 @@ import { useState } from "react";
 import Link from "next/link";
 
 export default function TradingPage() {
-  const { prices, connected } = usePrices();
+  const { prices, connected, onPositionUpdate } = usePrices();
   const [selectedFeedId, setSelectedFeedId] = useState(2056);
 
   const selectedPrice = prices.find((p) => p.id === selectedFeedId);
@@ -84,7 +84,7 @@ export default function TradingPage() {
 
       {/* Positions */}
       <div className="px-4 pb-4">
-        <PositionList prices={prices} />
+        <PositionsPanel prices={prices} onPositionUpdate={onPositionUpdate} />
       </div>
     </main>
   );

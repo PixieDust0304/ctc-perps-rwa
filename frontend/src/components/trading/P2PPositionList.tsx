@@ -2,12 +2,9 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useAccount } from "wagmi";
-import { type Address } from "viem";
-import { CONTRACTS, TRADING_ABI } from "../../lib/contracts";
-import { useContractWrite } from "../../hooks/useContractWrite";
 import type { PositionUpdate } from "../../hooks/useWebSocket";
 
-interface PositionData {
+interface P2PPositionData {
   positionId: `0x${string}`;
   feedId: number;
   isLong: boolean;
@@ -24,16 +21,13 @@ const FEED_NAMES: Record<number, string> = {
   2062: "Platinum",
 };
 
-export function PositionList({
-  prices,
+export function P2PPositionList({
   onPositionUpdate,
 }: {
-  prices: { id: number; price: number }[];
   onPositionUpdate: (cb: (update: PositionUpdate) => void) => () => void;
 }) {
   const { address } = useAccount();
-  const { execute, isPending } = useContractWrite();
-  const [positions, setPositions] = useState<PositionData[]>([]);
+  const [positions, setPositions] = useState<P2PPositionData[]>([]);
   const [loading, setLoading] = useState(false);
 
   const fetchPositions = useCallback(async () => {
@@ -42,7 +36,7 @@ export function PositionList({
 
     try {
       const res = await fetch(
-        `http://localhost:3001/api/positions?owner=${address}&status=open`
+        `http://localhost:3001/api/positions/p2p?owner=${address}&status=open`
       );
       if (res.ok) {
         const data = await res.json();
@@ -68,82 +62,39 @@ export function PositionList({
     fetchPositions();
   }, [fetchPositions]);
 
-  // Subscribe to WebSocket position updates
+  // Subscribe to WebSocket P2P position updates
   useEffect(() => {
     if (!onPositionUpdate) return;
 
     const unsub = onPositionUpdate((update: PositionUpdate) => {
-      if (update.positionType !== "trading") return;
+      if (update.positionType !== "p2p") return;
 
       if (update.action === "opened") {
         const pos = update.position;
         if (address && (pos.owner as string)?.toLowerCase() === address.toLowerCase()) {
           fetchPositions();
         }
-      } else if (update.action === "closed" || update.action === "liquidated") {
+      } else if (update.action === "settled" || update.action === "closed") {
         const posId = update.position.positionId as string;
-        setPositions((prev) => prev.filter((p) => p.positionId !== posId));
+        if (posId) {
+          setPositions((prev) => prev.filter((p) => p.positionId !== posId));
+        } else {
+          // Batch settlement — refetch
+          fetchPositions();
+        }
       }
     });
 
     return unsub;
   }, [onPositionUpdate, address, fetchPositions]);
 
-  const handleClose = (positionId: `0x${string}`) => {
-    if (!CONTRACTS.trading) return;
-    execute(
-      {
-        address: CONTRACTS.trading as Address,
-        abi: TRADING_ABI,
-        functionName: "closePosition",
-        args: [positionId],
-      },
-      "Closing position"
-    );
-  };
-
-  const getPnl = (pos: PositionData) => {
-    const currentPriceData = prices.find((p) => p.id === pos.feedId);
-    if (!currentPriceData || currentPriceData.price <= 0) return null;
-
-    const entry = Number(pos.entryPrice) / 1e18;
-    const current = currentPriceData.price;
-    const collateral = Number(pos.collateral);
-    const sizeUsd = Number(pos.sizeUsd);
-    if (collateral === 0) return null;
-    const leverage = sizeUsd / collateral;
-    const priceChange = pos.isLong
-      ? (current - entry) / entry
-      : (entry - current) / entry;
-    const pnlPercent = priceChange * leverage * 100;
-    const pnlUsd = (collateral / 1e18) * priceChange * leverage;
-
-    return { pnlPercent, pnlUsd };
-  };
-
-  const MAINTENANCE_MARGIN = 0.3;
-
-  const getLiquidationPrice = (pos: PositionData) => {
-    const entry = Number(pos.entryPrice) / 1e18;
-    const collateral = Number(pos.collateral);
-    const sizeUsd = Number(pos.sizeUsd);
-    if (collateral === 0) return 0;
-    const leverage = sizeUsd / collateral;
-    const moveToLiq = (1 - MAINTENANCE_MARGIN) / leverage;
-
-    if (pos.isLong) {
-      return entry * (1 - moveToLiq);
-    } else {
-      return entry * (1 + moveToLiq);
-    }
-  };
-
   if (!address) return null;
+  if (positions.length === 0 && !loading) return null;
 
   return (
     <div className="bg-gray-900 rounded-lg p-4">
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-lg font-semibold text-white">Open Positions</h3>
+        <h3 className="text-lg font-semibold text-white">P2P Positions</h3>
         <button
           onClick={fetchPositions}
           className="text-xs text-gray-400 hover:text-white"
@@ -153,16 +104,14 @@ export function PositionList({
       </div>
 
       {loading && positions.length === 0 ? (
-        <p className="text-gray-500 text-sm">Loading positions...</p>
-      ) : positions.length === 0 ? (
-        <p className="text-gray-500 text-sm">No open positions</p>
+        <p className="text-gray-500 text-sm">Loading P2P positions...</p>
       ) : (
         <div className="space-y-2">
           {positions.map((pos) => {
-            const pnl = getPnl(pos);
             const collateral = Number(pos.collateral);
             const sizeUsd = Number(pos.sizeUsd);
             const leverage = collateral > 0 ? sizeUsd / collateral : 0;
+            const entryUsd = Number(pos.entryPrice) / 1e18;
 
             return (
               <div
@@ -171,6 +120,9 @@ export function PositionList({
               >
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold px-2 py-0.5 rounded bg-purple-900 text-purple-400">
+                      P2P
+                    </span>
                     <span
                       className={`text-xs font-bold px-2 py-0.5 rounded ${
                         pos.isLong
@@ -192,54 +144,29 @@ export function PositionList({
                       Size: ${(sizeUsd / 1e18).toFixed(0)}
                     </span>
                     <span>
-                      Entry: ${(Number(pos.entryPrice) / 1e18).toFixed(2)}
+                      VAMM Entry: ${entryUsd.toFixed(2)}
                     </span>
                     <span>
                       Collateral: $
                       {(collateral / 1e18).toFixed(2)}
                     </span>
-                    <span className="text-orange-400">
-                      Liq: ${getLiquidationPrice(pos).toFixed(2)}
-                    </span>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-3">
-                  {pnl && (
-                    <div className="text-right">
-                      <p
-                        className={`text-sm font-mono ${
-                          pnl.pnlUsd >= 0 ? "text-green-400" : "text-red-400"
-                        }`}
-                      >
-                        {pnl.pnlUsd >= 0 ? "+" : ""}
-                        {pnl.pnlUsd.toFixed(2)} USD
-                      </p>
-                      <p
-                        className={`text-xs ${
-                          pnl.pnlPercent >= 0
-                            ? "text-green-500"
-                            : "text-red-500"
-                        }`}
-                      >
-                        {pnl.pnlPercent >= 0 ? "+" : ""}
-                        {pnl.pnlPercent.toFixed(2)}%
-                      </p>
-                    </div>
-                  )}
-                  <button
-                    onClick={() => handleClose(pos.positionId)}
-                    disabled={isPending}
-                    className="px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white text-xs rounded disabled:opacity-50"
-                  >
-                    {isPending ? "..." : "Close"}
-                  </button>
+                  <span className="text-xs px-2 py-0.5 rounded bg-amber-900 text-amber-400">
+                    Pending Settlement
+                  </span>
                 </div>
               </div>
             );
           })}
         </div>
       )}
+
+      <p className="text-xs text-gray-600 mt-2">
+        P2P positions settle at market open with oracle price
+      </p>
     </div>
   );
 }

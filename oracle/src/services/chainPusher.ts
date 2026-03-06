@@ -24,15 +24,15 @@ export async function pushPrices(ticks: PriceTick[]): Promise<void> {
     return;
   }
 
-  // Filter to only push newer timestamps
+  // Filter: only fresh ticks with real prices and newer timestamps
   const filteredTicks = ticks.filter(
-    (t) => t.timestamp > (lastPushedTimestamps[t.feedId] || 0)
+    (t) => t.fresh && t.rawPrice > 0n && t.timestamp > (lastPushedTimestamps[t.feedId] || 0)
   );
   if (filteredTicks.length === 0) return;
 
   const feedIds = filteredTicks.map((t) => t.feedId);
   const rawPrices = filteredTicks.map((t) => t.rawPrice);
-  const timestamps = filteredTicks.map((t) => BigInt(t.timestamp));
+  const timestamps = filteredTicks.map((t) => BigInt(Math.floor(t.timestamp / 1000)));
   const freshFlags = filteredTicks.map((t) => t.fresh);
 
   try {

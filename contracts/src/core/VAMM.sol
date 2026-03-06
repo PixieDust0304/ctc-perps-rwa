@@ -18,10 +18,11 @@ contract VAMM is IVAMM, OwnableUpgradeable, UUPSUpgradeable {
 
     address public marketState;
     address public p2pTrading;
+    address public keeper;
 
     modifier onlyAuthorized() {
         require(
-            msg.sender == owner() || msg.sender == marketState || msg.sender == p2pTrading,
+            msg.sender == owner() || msg.sender == marketState || msg.sender == p2pTrading || msg.sender == keeper,
             "VAMM: unauthorized"
         );
         _;
@@ -141,6 +142,10 @@ contract VAMM is IVAMM, OwnableUpgradeable, UUPSUpgradeable {
 
     function setP2PTrading(address p2p) external onlyOwner {
         p2pTrading = p2p;
+    }
+
+    function setKeeper(address keeper_) external onlyOwner {
+        keeper = keeper_;
     }
 
     function _authorizeUpgrade(address) internal override onlyOwner {}

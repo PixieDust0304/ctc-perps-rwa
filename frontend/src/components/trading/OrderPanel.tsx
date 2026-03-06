@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useAccount } from "wagmi";
 import { parseEther, type Address } from "viem";
-import { CONTRACTS, TRADING_ABI, ERC20_ABI } from "../../lib/contracts";
+import { CONTRACTS, TRADING_ABI, P2P_TRADING_ABI, ERC20_ABI } from "../../lib/contracts";
 import { useContractWrite } from "../../hooks/useContractWrite";
 
 interface OrderPanelProps {
@@ -37,7 +37,11 @@ export function OrderPanel({
     : 0;
 
   const handleApproveAndOpen = async () => {
-    if (!address || !CONTRACTS.trading || collateralNum <= 0) return;
+    if (!address || collateralNum <= 0) return;
+
+    const useP2P = !isMarketOpen;
+    const targetContract = useP2P ? CONTRACTS.p2pTrading : CONTRACTS.trading;
+    if (!targetContract) return;
 
     const collateralWei = parseEther(collateral);
     const leverageWei = parseEther(leverage);
@@ -48,23 +52,35 @@ export function OrderPanel({
         address: CONTRACTS.mockUSDC as Address,
         abi: ERC20_ABI,
         functionName: "approve",
-        args: [CONTRACTS.trading as Address, collateralWei],
+        args: [targetContract as Address, collateralWei],
       },
       "Approving USDC"
     );
 
     if (!approved) return;
 
-    // Step 2: Open position
-    await execute(
-      {
-        address: CONTRACTS.trading as Address,
-        abi: TRADING_ABI,
-        functionName: "openPosition",
-        args: [feedId, isLong, collateralWei, leverageWei],
-      },
-      `Opening ${isLong ? "Long" : "Short"} $${notional.toFixed(0)}`
-    );
+    // Step 2: Open position (P2P or direct)
+    if (useP2P) {
+      await execute(
+        {
+          address: CONTRACTS.p2pTrading as Address,
+          abi: P2P_TRADING_ABI,
+          functionName: "openP2PPosition",
+          args: [feedId, isLong, collateralWei, leverageWei],
+        },
+        `Opening P2P ${isLong ? "Long" : "Short"} $${notional.toFixed(0)}`
+      );
+    } else {
+      await execute(
+        {
+          address: CONTRACTS.trading as Address,
+          abi: TRADING_ABI,
+          functionName: "openPosition",
+          args: [feedId, isLong, collateralWei, leverageWei],
+        },
+        `Opening ${isLong ? "Long" : "Short"} $${notional.toFixed(0)}`
+      );
+    }
   };
 
   return (
@@ -176,7 +192,7 @@ export function OrderPanel({
           ? "Connect Wallet"
           : isPending
             ? "Confirming..."
-            : `${isLong ? "Long" : "Short"} ${notional.toFixed(0)} USD`}
+            : `${isMarketOpen ? "" : "P2P "}${isLong ? "Long" : "Short"} ${notional.toFixed(0)} USD`}
       </button>
     </div>
   );

@@ -11,11 +11,18 @@ export function CustodyLiquidity() {
   })).filter((e) => e.address);
 
   const { data } = useReadContracts({
-    contracts: custodyEntries.map((e) => ({
-      address: e.address!,
-      abi: CUSTODY_ABI,
-      functionName: "availableBalance",
-    })),
+    contracts: custodyEntries.flatMap((e) => [
+      {
+        address: e.address!,
+        abi: CUSTODY_ABI,
+        functionName: "availableBalance" as const,
+      },
+      {
+        address: e.address!,
+        abi: CUSTODY_ABI,
+        functionName: "reservedBalance" as const,
+      },
+    ]),
     query: { refetchInterval: 10000 },
   });
 
@@ -24,8 +31,11 @@ export function CustodyLiquidity() {
   return (
     <div className="flex gap-3 px-4 py-2 overflow-x-auto">
       {custodyEntries.map((entry, i) => {
-        const raw = data?.[i]?.result as bigint | undefined;
-        const balance = raw ? Number(formatEther(raw)) : 0;
+        const available = data?.[i * 2]?.result as bigint | undefined;
+        const reserved = data?.[i * 2 + 1]?.result as bigint | undefined;
+        const total = available ? Number(formatEther(available)) : 0;
+        const res = reserved ? Number(formatEther(reserved)) : 0;
+        const unreserved = total - res;
 
         return (
           <div
@@ -34,8 +44,18 @@ export function CustodyLiquidity() {
           >
             <span className="text-gray-400">{entry.feed.name}</span>
             <span className="text-white font-mono">
-              ${balance > 0 ? balance.toLocaleString(undefined, { maximumFractionDigits: 0 }) : "0"}
+              $
+              {unreserved > 0
+                ? unreserved.toLocaleString(undefined, {
+                    maximumFractionDigits: 0,
+                  })
+                : "0"}
             </span>
+            {res > 0 && (
+              <span className="text-gray-500 text-xs font-mono">
+                ({res.toLocaleString(undefined, { maximumFractionDigits: 0 })} reserved)
+              </span>
+            )}
           </div>
         );
       })}

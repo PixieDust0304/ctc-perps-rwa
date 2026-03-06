@@ -115,7 +115,7 @@ contract DeployLocal is Script {
             abi.encodeCall(Trading.initialize, (
                 deployer, address(usdc), address(oracle), address(pool),
                 address(feeManager), address(marketState),
-                100e18, 3000, 10e18, 400
+                100e18, 3000, 10e18, 300
             ))
         )));
         trading.setFeedCustody(GOLD, goldCustody);
@@ -140,6 +140,12 @@ contract DeployLocal is Script {
         vamm.setDepthMultiplier(CRUDE_OIL, CRUDE_OIL_DEPTH);
         vamm.setDepthMultiplier(PLATINUM, PLATINUM_DEPTH);
         vamm.setMarketState(address(marketState));
+        vamm.setKeeper(oracleSigner);
+        // Initialize VAMMs with approximate spot prices so P2P works on fresh deploy
+        vamm.initializeVAMM(GOLD, 5080e18);       // ~$5,080
+        vamm.initializeVAMM(SILVER, 82e18);        // ~$82
+        vamm.initializeVAMM(CRUDE_OIL, 79e18);     // ~$79
+        vamm.initializeVAMM(PLATINUM, 2126e18);     // ~$2,126
         console.log("VAMM:", address(vamm));
 
         // 9. P2PTrading
@@ -149,7 +155,7 @@ contract DeployLocal is Script {
             abi.encodeCall(P2PTrading.initialize, (
                 deployer, address(usdc), address(vamm), address(pool),
                 address(marketState), address(feeManager),
-                100e18, 10e18, 120
+                100e18, 10e18, 10
             ))
         )));
         vamm.setP2PTrading(address(p2pTrading));

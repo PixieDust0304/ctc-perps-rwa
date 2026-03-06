@@ -48,3 +48,14 @@ export function broadcastMarketState(updates: MarketStateUpdate[]) {
     });
   }
 }
+
+export function broadcastPositionUpdate(
+  action: "opened" | "closed" | "liquidated" | "settled",
+  positionType: "trading" | "p2p",
+  position: Record<string, unknown>
+) {
+  broadcast({
+    type: "position",
+    data: { action, positionType, position },
+  });
+}

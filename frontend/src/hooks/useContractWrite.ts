@@ -33,7 +33,11 @@ export function useContractWrite() {
     } catch (err: unknown) {
       setIsConfirming(false);
       const msg =
-        err instanceof Error ? err.message : "Transaction rejected";
+        err instanceof Error
+          ? err.message
+          : typeof err === "string"
+            ? err
+            : "Transaction rejected";
       const match = msg.match(/reason:\s*(.+?)(?:\n|$)/);
       const short = match
         ? match[1].slice(0, 80)

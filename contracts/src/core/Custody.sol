@@ -120,9 +120,13 @@ contract Custody is ICustody, OwnableUpgradeable, UUPSUpgradeable, ReentrancyGua
     function increasePosition(bool isLong, uint256 sizeUsd, uint256 collateral) external onlyTrading {
         accrueFees();
 
-        // Collateral goes to reserved
+        // Collateral USDC arrived in custody — add to available
         availableBalance += collateral;
-        reservedBalance += collateral;
+        // Reserve the full position size (max potential payout), not just collateral.
+        // This ensures availableBalance - reservedBalance reflects what LPs can withdraw
+        // and what the pool can actually use to pay other winners.
+        reservedBalance += sizeUsd;
+        require(availableBalance >= reservedBalance, "Custody: insufficient liquidity");
 
         if (isLong) {
             longOpenInterest += sizeUsd;
@@ -135,10 +139,11 @@ contract Custody is ICustody, OwnableUpgradeable, UUPSUpgradeable, ReentrancyGua
     }
 
     /// @notice Called by Trading when closing/liquidating a position
-    function decreasePosition(bool isLong, uint256 sizeUsd, uint256 collateral) external onlyTrading {
+    function decreasePosition(bool isLong, uint256 sizeUsd, uint256 /* collateral */) external onlyTrading {
         accrueFees();
 
-        reservedBalance -= collateral;
+        // Release the full position size reservation
+        reservedBalance = reservedBalance > sizeUsd ? reservedBalance - sizeUsd : 0;
 
         if (isLong) {
             longOpenInterest -= sizeUsd;

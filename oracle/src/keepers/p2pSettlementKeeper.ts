@@ -1,8 +1,9 @@
 import { createPublicClient, http, type Hex } from "viem";
 import { config } from "../config/index.js";
 import { creditcoinLocal } from "../config/chains.js";
-import { P2PTradingABI, OracleABI, MarketStateABI } from "../abi/index.js";
+import { P2PTradingABI, OracleABI, MarketStateABI, VAMMABI } from "../abi/index.js";
 import { getWalletClient } from "../utils/signing.js";
+import { getLatestPrice } from "../services/priceStore.js";
 import { logger } from "../utils/logger.js";
 import { retry } from "../utils/retry.js";
 import { startSettlement, endSettlement } from "./keeperCoordinator.js";
@@ -15,8 +16,6 @@ const BATCH_SIZE = 50;
  */
 export async function handleMarketOpenSettlement(updates: MarketStateUpdate[]): Promise<void> {
   for (const update of updates) {
-    if (!update.isOpen) continue; // Only handle CLOSED→OPEN
-
     // Acquire settlement lock
     if (!startSettlement(update.feedId)) {
       logger.warn("P2PSettlement", `Settlement already running for feed ${update.feedId}`);
@@ -24,12 +23,17 @@ export async function handleMarketOpenSettlement(updates: MarketStateUpdate[]): 
     }
 
     try {
-      // 1. Update MarketState contract
-      await updateMarketStateOnChain(update.feedId);
-
-      // 2. Settle all P2P positions
-      if (config.p2pTradingAddress) {
-        await settleAllP2PPositions(update.feedId);
+      if (update.isOpen) {
+        // CLOSED→OPEN: deactivate VAMM, update MarketState, settle P2P positions
+        await deactivateVAMMForFeed(update.feedId);
+        await updateMarketStateOnChain(update.feedId);
+        if (config.p2pTradingAddress) {
+          await settleAllP2PPositions(update.feedId);
+        }
+      } else {
+        // OPEN→CLOSED: initialize VAMM with last known price for P2P trading
+        await initializeVAMMForFeed(update.feedId);
+        await updateMarketStateOnChain(update.feedId);
       }
     } catch (err) {
       logger.error("P2PSettlement", `Settlement failed for feed ${update.feedId}: ${(err as Error).message}`);
@@ -37,6 +41,68 @@ export async function handleMarketOpenSettlement(updates: MarketStateUpdate[]): 
       endSettlement(update.feedId);
     }
   }
+}
+
+async function initializeVAMMForFeed(feedId: number): Promise<void> {
+  if (!config.vammAddress) return;
+
+  const lastPrice = getLatestPrice(feedId);
+  if (!lastPrice || lastPrice.price === 0n) {
+    logger.warn("P2PSettlement", `No price available to initialize VAMM for feed ${feedId}`);
+    return;
+  }
+
+  await retry(
+    async () => {
+      const walletClient = getWalletClient();
+      const publicClient = createPublicClient({
+        chain: creditcoinLocal,
+        transport: http(config.rpcUrl),
+      });
+
+      const { request } = await publicClient.simulateContract({
+        address: config.vammAddress as Hex,
+        abi: VAMMABI,
+        functionName: "initializeVAMM",
+        args: [feedId, lastPrice.price],
+        account: walletClient.account,
+      });
+
+      const txHash = await walletClient.writeContract(request);
+      logger.info("P2PSettlement", `VAMM initialized for feed ${feedId} at $${Number(lastPrice.price) / 1e18}, tx: ${txHash}`);
+    },
+    3,
+    2000,
+    `initializeVAMM-${feedId}`
+  );
+}
+
+async function deactivateVAMMForFeed(feedId: number): Promise<void> {
+  if (!config.vammAddress) return;
+
+  await retry(
+    async () => {
+      const walletClient = getWalletClient();
+      const publicClient = createPublicClient({
+        chain: creditcoinLocal,
+        transport: http(config.rpcUrl),
+      });
+
+      const { request } = await publicClient.simulateContract({
+        address: config.vammAddress as Hex,
+        abi: VAMMABI,
+        functionName: "deactivateVAMM",
+        args: [feedId],
+        account: walletClient.account,
+      });
+
+      const txHash = await walletClient.writeContract(request);
+      logger.info("P2PSettlement", `VAMM deactivated for feed ${feedId}, tx: ${txHash}`);
+    },
+    3,
+    2000,
+    `deactivateVAMM-${feedId}`
+  );
 }
 
 async function updateMarketStateOnChain(feedId: number): Promise<void> {

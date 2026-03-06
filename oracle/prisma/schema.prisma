@@ -50,3 +50,26 @@ model KeeperEvent {
   errorMessage String?
   createdAt    DateTime @default(now())
 }
+
+model PositionRecord {
+  positionId  String   @id
+  type        String
+  owner       String
+  feedId      Int
+  isLong      Boolean
+  collateral  Decimal  @db.Decimal(38, 18)
+  sizeUsd     Decimal  @db.Decimal(38, 18)
+  entryPrice  Decimal  @db.Decimal(38, 18)
+  status      String   @default("open")
+  realizedPnl Decimal? @db.Decimal(38, 18)
+  openedAt    DateTime
+  closedAt    DateTime?
+  txHash      String?
+  closeTxHash String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([owner, status])
+  @@index([feedId, status])
+  @@index([status])
+}

@@ -1,11 +1,14 @@
-import { createPublicClient, http, type Hex, type Log } from "viem";
+import { createPublicClient, http, type Hex } from "viem";
 import { config } from "../config/index.js";
 import { creditcoinLocal } from "../config/chains.js";
-import { TradingABI } from "../abi/index.js";
+import { TradingABI, P2PTradingABI } from "../abi/index.js";
 import { logger } from "../utils/logger.js";
-import type { Position } from "../types/index.js";
+import { getPrisma, persistPosition, updatePositionStatus, queryPositionsByType } from "../services/database.js";
+import { broadcastPositionUpdate } from "../services/websocketServer.js";
+import type { Position, P2PPosition } from "../types/index.js";
 
 const openPositions = new Map<Hex, Position>();
+const openP2PPositions = new Map<Hex, P2PPosition>();
 
 let publicClient: ReturnType<typeof createPublicClient>;
 
@@ -19,10 +22,72 @@ function getPublicClient() {
   return publicClient;
 }
 
+function serializePosition(pos: Position | P2PPosition): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(pos)) {
+    result[k] = typeof v === "bigint" ? v.toString() : v;
+  }
+  return result;
+}
+
+/**
+ * Initialize positions — from DB if available, else replay from chain
+ */
+export async function initPositions(): Promise<void> {
+  const prisma = getPrisma();
+
+  if (prisma) {
+    try {
+      // Load trading positions from DB
+      const tradingRows = await queryPositionsByType("trading", undefined, "open");
+      for (const row of tradingRows) {
+        const id = row.positionId as Hex;
+        openPositions.set(id, {
+          id,
+          owner: row.owner as `0x${string}`,
+          feedId: row.feedId,
+          isLong: row.isLong,
+          collateral: BigInt(row.collateral.toString().replace(".", "").replace(/0+$/, "") || "0"),
+          sizeUsd: BigInt(row.sizeUsd.toString().replace(".", "").replace(/0+$/, "") || "0"),
+          entryPrice: BigInt(row.entryPrice.toString().replace(".", "").replace(/0+$/, "") || "0"),
+          openTimestamp: 0n,
+          cumulativeBaseFeeSnapshot: 0n,
+          cumulativeFundingSnapshot: 0n,
+        });
+      }
+
+      // Load P2P positions from DB
+      const p2pRows = await queryPositionsByType("p2p", undefined, "open");
+      for (const row of p2pRows) {
+        const id = row.positionId as Hex;
+        openP2PPositions.set(id, {
+          id,
+          owner: row.owner as `0x${string}`,
+          feedId: row.feedId,
+          isLong: row.isLong,
+          collateral: BigInt(row.collateral.toString().replace(".", "").replace(/0+$/, "") || "0"),
+          sizeUsd: BigInt(row.sizeUsd.toString().replace(".", "").replace(/0+$/, "") || "0"),
+          entryPrice: BigInt(row.entryPrice.toString().replace(".", "").replace(/0+$/, "") || "0"),
+          openTimestamp: 0n,
+          isSettled: false,
+        });
+      }
+
+      logger.info("PositionTracker", `Loaded ${openPositions.size} trading + ${openP2PPositions.size} P2P positions from DB`);
+      return;
+    } catch (err) {
+      logger.warn("PositionTracker", `DB load failed, falling back to chain replay: ${err}`);
+    }
+  }
+
+  // Fallback: replay from chain
+  await replayHistoricalPositions();
+}
+
 /**
  * Replay historical events from block 0 to build initial position state
  */
-export async function replayHistoricalPositions(): Promise<void> {
+async function replayHistoricalPositions(): Promise<void> {
   if (!config.tradingAddress) {
     logger.warn("PositionTracker", "Trading address not configured, skipping replay");
     return;
@@ -33,7 +98,7 @@ export async function replayHistoricalPositions(): Promise<void> {
 
   logger.info("PositionTracker", "Replaying historical position events...");
 
-  // Fetch PositionOpened events
+  // Trading: PositionOpened
   const openedLogs = await client.getLogs({
     address: tradingAddr,
     event: {
@@ -63,10 +128,10 @@ export async function replayHistoricalPositions(): Promise<void> {
       sizeUsd: bigint;
       entryPrice: bigint;
     };
-    addPositionFromEvent(args);
+    addTradingPosition(args, log.transactionHash);
   }
 
-  // Fetch PositionClosed events
+  // Trading: PositionClosed
   const closedLogs = await client.getLogs({
     address: tradingAddr,
     event: {
@@ -83,11 +148,11 @@ export async function replayHistoricalPositions(): Promise<void> {
   });
 
   for (const log of closedLogs) {
-    const args = log.args as { positionId: Hex };
-    removePosition(args.positionId);
+    const args = log.args as { positionId: Hex; realizedPnl: bigint };
+    openPositions.delete(args.positionId);
   }
 
-  // Fetch PositionLiquidated events
+  // Trading: PositionLiquidated
   const liquidatedLogs = await client.getLogs({
     address: tradingAddr,
     event: {
@@ -105,83 +170,112 @@ export async function replayHistoricalPositions(): Promise<void> {
 
   for (const log of liquidatedLogs) {
     const args = log.args as { positionId: Hex };
-    removePosition(args.positionId);
+    openPositions.delete(args.positionId);
   }
 
-  logger.info("PositionTracker", `Replay complete. ${openPositions.size} open positions tracked.`);
+  // P2P replay
+  if (config.p2pTradingAddress) {
+    await replayP2PPositions();
+  }
+
+  logger.info("PositionTracker", `Replay complete. ${openPositions.size} trading + ${openP2PPositions.size} P2P positions tracked.`);
 }
 
-/**
- * Start watching for real-time position events
- */
-export function startWatching(): void {
-  if (!config.tradingAddress) return;
-
+async function replayP2PPositions(): Promise<void> {
   const client = getPublicClient();
-  const tradingAddr = config.tradingAddress as Hex;
+  const p2pAddr = config.p2pTradingAddress as Hex;
 
-  client.watchContractEvent({
-    address: tradingAddr,
-    abi: TradingABI,
-    eventName: "PositionOpened",
-    onLogs: (logs) => {
-      for (const log of logs) {
-        const args = log.args as {
-          positionId: Hex;
-          owner: Hex;
-          feedId: number;
-          isLong: boolean;
-          collateral: bigint;
-          sizeUsd: bigint;
-          entryPrice: bigint;
-        };
-        addPositionFromEvent(args);
-        logger.info("PositionTracker", `Position opened: ${args.positionId} feed=${args.feedId}`);
-      }
+  const openedLogs = await client.getLogs({
+    address: p2pAddr,
+    event: {
+      type: "event",
+      name: "P2PPositionOpened",
+      inputs: [
+        { name: "positionId", type: "bytes32", indexed: true },
+        { name: "owner", type: "address", indexed: true },
+        { name: "feedId", type: "uint16", indexed: false },
+        { name: "isLong", type: "bool", indexed: false },
+        { name: "collateral", type: "uint256", indexed: false },
+        { name: "sizeUsd", type: "uint256", indexed: false },
+        { name: "entryVammPrice", type: "uint256", indexed: false },
+      ],
     },
+    fromBlock: 0n,
+    toBlock: "latest",
   });
 
-  client.watchContractEvent({
-    address: tradingAddr,
-    abi: TradingABI,
-    eventName: "PositionClosed",
-    onLogs: (logs) => {
-      for (const log of logs) {
-        const args = log.args as { positionId: Hex };
-        removePosition(args.positionId);
-        logger.info("PositionTracker", `Position closed: ${args.positionId}`);
-      }
+  for (const log of openedLogs) {
+    const args = log.args as {
+      positionId: Hex;
+      owner: Hex;
+      feedId: number;
+      isLong: boolean;
+      collateral: bigint;
+      sizeUsd: bigint;
+      entryVammPrice: bigint;
+    };
+    addP2PPosition(args, log.transactionHash);
+  }
+
+  // P2P: closed
+  const closedLogs = await client.getLogs({
+    address: p2pAddr,
+    event: {
+      type: "event",
+      name: "P2PPositionClosed",
+      inputs: [
+        { name: "positionId", type: "bytes32", indexed: true },
+        { name: "owner", type: "address", indexed: true },
+        { name: "realizedPnl", type: "int256", indexed: false },
+      ],
     },
+    fromBlock: 0n,
+    toBlock: "latest",
   });
 
-  client.watchContractEvent({
-    address: tradingAddr,
-    abi: TradingABI,
-    eventName: "PositionLiquidated",
-    onLogs: (logs) => {
-      for (const log of logs) {
-        const args = log.args as { positionId: Hex };
-        removePosition(args.positionId);
-        logger.info("PositionTracker", `Position liquidated: ${args.positionId}`);
-      }
+  for (const log of closedLogs) {
+    const args = log.args as { positionId: Hex };
+    openP2PPositions.delete(args.positionId);
+  }
+
+  // P2P: batch settled — remove all positions for the feed
+  const settledLogs = await client.getLogs({
+    address: p2pAddr,
+    event: {
+      type: "event",
+      name: "P2PBatchSettled",
+      inputs: [
+        { name: "feedId", type: "uint16", indexed: true },
+        { name: "settledCount", type: "uint256", indexed: false },
+        { name: "settlementPrice", type: "uint256", indexed: false },
+      ],
     },
+    fromBlock: 0n,
+    toBlock: "latest",
   });
 
-  logger.info("PositionTracker", "Watching for real-time position events");
+  for (const log of settledLogs) {
+    const args = log.args as { feedId: number };
+    for (const [id, pos] of openP2PPositions) {
+      if (pos.feedId === args.feedId) {
+        openP2PPositions.delete(id);
+      }
+    }
+  }
 }
 
-function addPositionFromEvent(args: {
-  positionId: Hex;
-  owner: Hex;
-  feedId: number;
-  isLong: boolean;
-  collateral: bigint;
-  sizeUsd: bigint;
-  entryPrice: bigint;
-}): void {
-  // We need fee snapshots from the contract for accurate pre-check.
-  // On replay, we fetch them lazily on first liquidation check.
-  // For real-time, the event data is enough to track; snapshots are fetched when needed.
+function addTradingPosition(
+  args: {
+    positionId: Hex;
+    owner: Hex;
+    feedId: number;
+    isLong: boolean;
+    collateral: bigint;
+    sizeUsd: bigint;
+    entryPrice: bigint;
+  },
+  txHash?: Hex | null
+): void {
   openPositions.set(args.positionId, {
     id: args.positionId,
     owner: args.owner,
@@ -190,10 +284,209 @@ function addPositionFromEvent(args: {
     collateral: args.collateral,
     sizeUsd: args.sizeUsd,
     entryPrice: args.entryPrice,
-    openTimestamp: 0n, // populated on-demand
-    cumulativeBaseFeeSnapshot: 0n, // populated on-demand
-    cumulativeFundingSnapshot: 0n, // populated on-demand
+    openTimestamp: 0n,
+    cumulativeBaseFeeSnapshot: 0n,
+    cumulativeFundingSnapshot: 0n,
   });
+
+  persistPosition({
+    positionId: args.positionId,
+    type: "trading",
+    owner: args.owner,
+    feedId: args.feedId,
+    isLong: args.isLong,
+    collateral: args.collateral.toString(),
+    sizeUsd: args.sizeUsd.toString(),
+    entryPrice: args.entryPrice.toString(),
+    openedAt: new Date(),
+    txHash: txHash ?? undefined,
+  });
+}
+
+function addP2PPosition(
+  args: {
+    positionId: Hex;
+    owner: Hex;
+    feedId: number;
+    isLong: boolean;
+    collateral: bigint;
+    sizeUsd: bigint;
+    entryVammPrice: bigint;
+  },
+  txHash?: Hex | null
+): void {
+  openP2PPositions.set(args.positionId, {
+    id: args.positionId,
+    owner: args.owner,
+    feedId: args.feedId,
+    isLong: args.isLong,
+    collateral: args.collateral,
+    sizeUsd: args.sizeUsd,
+    entryPrice: args.entryVammPrice,
+    openTimestamp: 0n,
+    isSettled: false,
+  });
+
+  persistPosition({
+    positionId: args.positionId,
+    type: "p2p",
+    owner: args.owner,
+    feedId: args.feedId,
+    isLong: args.isLong,
+    collateral: args.collateral.toString(),
+    sizeUsd: args.sizeUsd.toString(),
+    entryPrice: args.entryVammPrice.toString(),
+    openedAt: new Date(),
+    txHash: txHash ?? undefined,
+  });
+}
+
+/**
+ * Start watching for real-time position events (Trading + P2P)
+ */
+export function startWatching(): void {
+  const client = getPublicClient();
+
+  // Trading watchers
+  if (config.tradingAddress) {
+    const tradingAddr = config.tradingAddress as Hex;
+
+    client.watchContractEvent({
+      address: tradingAddr,
+      abi: TradingABI,
+      eventName: "PositionOpened",
+      onLogs: (logs) => {
+        for (const log of logs) {
+          const args = log.args as {
+            positionId: Hex;
+            owner: Hex;
+            feedId: number;
+            isLong: boolean;
+            collateral: bigint;
+            sizeUsd: bigint;
+            entryPrice: bigint;
+          };
+          addTradingPosition(args, log.transactionHash);
+          const pos = openPositions.get(args.positionId)!;
+          broadcastPositionUpdate("opened", "trading", serializePosition(pos));
+          logger.info("PositionTracker", `Position opened: ${args.positionId} feed=${args.feedId}`);
+        }
+      },
+    });
+
+    client.watchContractEvent({
+      address: tradingAddr,
+      abi: TradingABI,
+      eventName: "PositionClosed",
+      onLogs: (logs) => {
+        for (const log of logs) {
+          const args = log.args as { positionId: Hex; realizedPnl: bigint };
+          const pos = openPositions.get(args.positionId);
+          openPositions.delete(args.positionId);
+          updatePositionStatus(args.positionId, "closed", args.realizedPnl?.toString(), log.transactionHash ?? undefined);
+          broadcastPositionUpdate("closed", "trading", {
+            positionId: args.positionId,
+            realizedPnl: args.realizedPnl?.toString(),
+            ...(pos ? serializePosition(pos) : {}),
+          });
+          logger.info("PositionTracker", `Position closed: ${args.positionId}`);
+        }
+      },
+    });
+
+    client.watchContractEvent({
+      address: tradingAddr,
+      abi: TradingABI,
+      eventName: "PositionLiquidated",
+      onLogs: (logs) => {
+        for (const log of logs) {
+          const args = log.args as { positionId: Hex };
+          const pos = openPositions.get(args.positionId);
+          openPositions.delete(args.positionId);
+          updatePositionStatus(args.positionId, "liquidated", undefined, log.transactionHash ?? undefined);
+          broadcastPositionUpdate("liquidated", "trading", {
+            positionId: args.positionId,
+            ...(pos ? serializePosition(pos) : {}),
+          });
+          logger.info("PositionTracker", `Position liquidated: ${args.positionId}`);
+        }
+      },
+    });
+  }
+
+  // P2P watchers
+  if (config.p2pTradingAddress) {
+    const p2pAddr = config.p2pTradingAddress as Hex;
+
+    client.watchContractEvent({
+      address: p2pAddr,
+      abi: P2PTradingABI,
+      eventName: "P2PPositionOpened",
+      onLogs: (logs) => {
+        for (const log of logs) {
+          const args = log.args as {
+            positionId: Hex;
+            owner: Hex;
+            feedId: number;
+            isLong: boolean;
+            collateral: bigint;
+            sizeUsd: bigint;
+            entryVammPrice: bigint;
+          };
+          addP2PPosition(args, log.transactionHash);
+          const pos = openP2PPositions.get(args.positionId)!;
+          broadcastPositionUpdate("opened", "p2p", serializePosition(pos));
+          logger.info("PositionTracker", `P2P position opened: ${args.positionId} feed=${args.feedId}`);
+        }
+      },
+    });
+
+    client.watchContractEvent({
+      address: p2pAddr,
+      abi: P2PTradingABI,
+      eventName: "P2PPositionClosed",
+      onLogs: (logs) => {
+        for (const log of logs) {
+          const args = log.args as { positionId: Hex; realizedPnl: bigint };
+          const pos = openP2PPositions.get(args.positionId);
+          openP2PPositions.delete(args.positionId);
+          updatePositionStatus(args.positionId, "settled", args.realizedPnl?.toString(), log.transactionHash ?? undefined);
+          broadcastPositionUpdate("settled", "p2p", {
+            positionId: args.positionId,
+            realizedPnl: args.realizedPnl?.toString(),
+            ...(pos ? serializePosition(pos) : {}),
+          });
+          logger.info("PositionTracker", `P2P position closed: ${args.positionId}`);
+        }
+      },
+    });
+
+    client.watchContractEvent({
+      address: p2pAddr,
+      abi: P2PTradingABI,
+      eventName: "P2PBatchSettled",
+      onLogs: (logs) => {
+        for (const log of logs) {
+          const args = log.args as { feedId: number; settledCount: bigint; settlementPrice: bigint };
+          // Remove all P2P positions for this feed
+          for (const [id, pos] of openP2PPositions) {
+            if (pos.feedId === args.feedId) {
+              openP2PPositions.delete(id);
+              updatePositionStatus(id, "settled");
+            }
+          }
+          broadcastPositionUpdate("settled", "p2p", {
+            feedId: args.feedId,
+            settledCount: args.settledCount?.toString(),
+            settlementPrice: args.settlementPrice?.toString(),
+          });
+          logger.info("PositionTracker", `P2P batch settled: feed=${args.feedId} count=${args.settledCount}`);
+        }
+      },
+    });
+  }
+
+  logger.info("PositionTracker", "Watching for real-time position events (Trading + P2P)");
 }
 
 /**
@@ -203,7 +496,6 @@ export async function enrichPosition(positionId: Hex): Promise<Position | undefi
   const pos = openPositions.get(positionId);
   if (!pos) return undefined;
 
-  // If already enriched (non-zero openTimestamp), skip
   if (pos.openTimestamp !== 0n) return pos;
 
   try {
@@ -227,7 +519,6 @@ export async function enrichPosition(positionId: Hex): Promise<Position | undefi
       cumulativeFundingSnapshot: bigint;
     };
 
-    // Position has been closed on-chain (owner is zero address)
     if (data.owner === "0x0000000000000000000000000000000000000000") {
       openPositions.delete(positionId);
       return undefined;
@@ -243,16 +534,32 @@ export async function enrichPosition(positionId: Hex): Promise<Position | undefi
   }
 }
 
-function removePosition(positionId: Hex): void {
-  openPositions.delete(positionId);
-}
-
 export function getOpenPositions(feedId?: number): Position[] {
   const all = Array.from(openPositions.values());
   if (feedId === undefined) return all;
   return all.filter((p) => p.feedId === feedId);
 }
 
+export function getOpenP2PPositions(feedId?: number): P2PPosition[] {
+  const all = Array.from(openP2PPositions.values());
+  if (feedId === undefined) return all;
+  return all.filter((p) => p.feedId === feedId);
+}
+
+export function getPositionsForOwner(owner: string): Position[] {
+  const lc = owner.toLowerCase();
+  return Array.from(openPositions.values()).filter((p) => p.owner.toLowerCase() === lc);
+}
+
+export function getP2PPositionsForOwner(owner: string): P2PPosition[] {
+  const lc = owner.toLowerCase();
+  return Array.from(openP2PPositions.values()).filter((p) => p.owner.toLowerCase() === lc);
+}
+
 export function getPositionCount(): number {
   return openPositions.size;
+}
+
+export function getP2PPositionCount(): number {
+  return openP2PPositions.size;
 }

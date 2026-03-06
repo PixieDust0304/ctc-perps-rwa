@@ -5,8 +5,15 @@ export interface AutonomPrice {
   timestamp: number; // ms
 }
 
+export interface AutonomError {
+  feed_id: number;
+  code: string;
+  message: string;
+}
+
 export interface AutonomResponse {
   prices: AutonomPrice[];
+  errors?: AutonomError[];
   signature: string;
   recovery_id: number;
   served_at: number;
@@ -35,7 +42,7 @@ export interface MarketStateUpdate {
 }
 
 export interface WebSocketMessage {
-  type: "price" | "marketState" | "candle";
+  type: "price" | "marketState" | "candle" | "position";
   data: unknown;
 }
 
@@ -61,6 +68,18 @@ export interface Position {
   openTimestamp: bigint;
   cumulativeBaseFeeSnapshot: bigint;
   cumulativeFundingSnapshot: bigint;
+}
+
+export interface P2PPosition {
+  id: `0x${string}`;
+  owner: `0x${string}`;
+  feedId: number;
+  isLong: boolean;
+  collateral: bigint;
+  sizeUsd: bigint;
+  entryPrice: bigint;
+  openTimestamp: bigint;
+  isSettled: boolean;
 }
 
 export interface CustodyState {

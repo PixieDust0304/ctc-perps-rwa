@@ -24,7 +24,7 @@ ANVIL_PORT=8545
 WS_PORT=8080
 API_PORT=3001
 FRONTEND_PORT=3000
-DB_URL="postgresql://localhost:5432/ctc_perps"
+DB_URL="postgresql://$(whoami)@localhost:5432/ctc_perps"
 
 PIDS=()
 
@@ -80,15 +80,23 @@ rm -rf "$CONTRACTS_DIR/broadcast/"
 
 # ─── 0b. Wipe database ───────────────────────────────────────────
 log "Wiping database..."
+# Homebrew keg-only PostgreSQL may not be in PATH — add it
+for pgdir in /opt/homebrew/opt/postgresql@17/bin /opt/homebrew/opt/postgresql@16/bin /opt/homebrew/opt/postgresql/bin /usr/local/opt/postgresql@17/bin; do
+  [ -x "$pgdir/psql" ] && export PATH="$pgdir:$PATH" && break
+done
 if command -v psql &>/dev/null; then
-  if psql -h localhost -p 5432 -c "SELECT 1" &>/dev/null; then
-    psql -h localhost -p 5432 -c "DROP DATABASE IF EXISTS ctc_perps;" 2>/dev/null || true
-    psql -h localhost -p 5432 -c "CREATE DATABASE ctc_perps;" 2>/dev/null || true
+  if psql -h localhost -U "$(whoami)" -c "SELECT 1" postgres &>/dev/null; then
+    psql -h localhost -U "$(whoami)" -c "DROP DATABASE IF EXISTS ctc_perps;" postgres 2>&1 || true
+    psql -h localhost -U "$(whoami)" -c "CREATE DATABASE ctc_perps;" postgres 2>&1 || true
     log "PostgreSQL database wiped and recreated."
-    # Run Prisma schema push
+    # Push Prisma schema to fresh database
     cd "$ORACLE_DIR"
-    DATABASE_URL="$DB_URL" npx prisma db push --skip-generate --accept-data-loss 2>/dev/null || true
-    log "Prisma schema pushed."
+    DATABASE_URL="$DB_URL" npx prisma db push --skip-generate --accept-data-loss 2>&1
+    if [ $? -eq 0 ]; then
+      log "Prisma schema pushed successfully."
+    else
+      log "WARNING: Prisma schema push failed — oracle will fall back to in-memory mode."
+    fi
   else
     log "PostgreSQL not reachable — oracle will use in-memory mode."
   fi
@@ -118,7 +126,7 @@ if ! curl -s http://127.0.0.1:$ANVIL_PORT -X POST -H "Content-Type: application/
   echo "ERROR: Anvil failed to start on port $ANVIL_PORT"
   exit 1
 fi
-log "Anvil running (PID ${PIDS[-1]})."
+log "Anvil running (PID ${PIDS[${#PIDS[@]}-1]})."
 
 # ─── 2. Deploy Contracts ─────────────────────────────────────────
 log "Deploying contracts..."
@@ -230,14 +238,14 @@ PIDS+=($!)
 # Wait for oracle to be ready (check API endpoint)
 log "Waiting for oracle service to be ready..."
 for i in $(seq 1 30); do
-  if curl -s "http://127.0.0.1:$API_PORT/api/prices" > /dev/null 2>&1; then
+  if curl -s "http://127.0.0.1:$API_PORT/api/health" > /dev/null 2>&1; then
     break
   fi
   sleep 1
 done
 
-if curl -s "http://127.0.0.1:$API_PORT/api/prices" > /dev/null 2>&1; then
-  log "Oracle service ready (WS: $WS_PORT, API: $API_PORT, PID ${PIDS[-1]})."
+if curl -s "http://127.0.0.1:$API_PORT/api/health" > /dev/null 2>&1; then
+  log "Oracle service ready (WS: $WS_PORT, API: $API_PORT, PID ${PIDS[${#PIDS[@]}-1]})."
 else
   log "WARNING: Oracle API not responding yet — it may still be starting up."
 fi
@@ -273,7 +281,7 @@ for i in $(seq 1 30); do
   fi
   sleep 1
 done
-log "Frontend started (PID ${PIDS[-1]})."
+log "Frontend started (PID ${PIDS[${#PIDS[@]}-1]})."
 
 # ─── Summary ─────────────────────────────────────────────────────
 echo ""

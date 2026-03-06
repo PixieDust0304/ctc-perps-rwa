@@ -85,6 +85,43 @@ export const TRADING_ABI = [
   },
 ] as const;
 
+export const P2P_TRADING_ABI = [
+  {
+    name: "openP2PPosition",
+    type: "function",
+    inputs: [
+      { name: "feedId", type: "uint16" },
+      { name: "isLong", type: "bool" },
+      { name: "collateral", type: "uint256" },
+      { name: "leverage", type: "uint256" },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    name: "positions",
+    type: "function",
+    inputs: [{ name: "positionId", type: "bytes32" }],
+    outputs: [
+      {
+        name: "",
+        type: "tuple",
+        components: [
+          { name: "owner", type: "address" },
+          { name: "feedId", type: "uint16" },
+          { name: "isLong", type: "bool" },
+          { name: "collateral", type: "uint256" },
+          { name: "sizeUsd", type: "uint256" },
+          { name: "entryPrice", type: "uint256" },
+          { name: "openTimestamp", type: "uint256" },
+          { name: "isSettled", type: "bool" },
+        ],
+      },
+    ],
+    stateMutability: "view",
+  },
+] as const;
+
 export const POOL_ABI = [
   {
     name: "deposit",
@@ -152,6 +189,13 @@ export const MARKET_STATE_ABI = [
 export const CUSTODY_ABI = [
   {
     name: "availableBalance",
+    type: "function",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    name: "reservedBalance",
     type: "function",
     inputs: [],
     outputs: [{ name: "", type: "uint256" }],

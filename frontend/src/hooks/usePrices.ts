@@ -4,7 +4,7 @@ import { useWebSocket } from "./useWebSocket";
 import { FEEDS } from "../lib/contracts";
 
 export function usePrices() {
-  const { prices, connected } = useWebSocket();
+  const { prices, connected, onPositionUpdate } = useWebSocket();
 
   const formattedPrices = FEEDS.map((feed) => {
     const data = prices[feed.id];
@@ -18,5 +18,5 @@ export function usePrices() {
     };
   });
 
-  return { prices: formattedPrices, connected };
+  return { prices: formattedPrices, connected, onPositionUpdate };
 }

@@ -61,6 +61,14 @@ export const config = {
   stalenessThresholdMs: 210_000,
   feeInterval: 15,
 
+  // Market state detection — debounce + cooldown to prevent false transitions from Autonom lags.
+  // Close requires high confidence (60 readings × 500ms = 30s of sustained staleness ON TOP of the 210s threshold).
+  // Open recovers faster (6 readings × 500ms = 3s) since fresh data is a strong signal.
+  // Cooldown prevents flip-flops entirely — no reverse transition within 5 minutes.
+  marketCloseConfirmations: Number(process.env.MARKET_CLOSE_CONFIRMATIONS || "60"),
+  marketOpenConfirmations: Number(process.env.MARKET_OPEN_CONFIRMATIONS || "6"),
+  marketStateCooldownMs: Number(process.env.MARKET_STATE_COOLDOWN_MS || "300000"),
+
   // Server
   wsPort: Number(process.env.WS_PORT || "8080"),
   apiPort: Number(process.env.API_PORT || "3001"),

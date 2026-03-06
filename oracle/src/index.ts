@@ -3,18 +3,49 @@ import { startFetcher } from "./services/fetcher.js";
 import { pushPrices } from "./services/chainPusher.js";
 import { storePriceTicks, getCandlesAsync, getLatestPrice, getPriceMovement } from "./services/priceStore.js";
 import { detectMarketStateChanges } from "./services/marketStateDetector.js";
-import { initDatabase } from "./services/database.js";
+import { initDatabase, queryPositions, queryPositionsByType, getPrisma } from "./services/database.js";
 import {
   startWebSocketServer,
   broadcastPrices,
   broadcastMarketState,
 } from "./services/websocketServer.js";
-import { replayHistoricalPositions, startWatching } from "./keepers/positionTracker.js";
+import {
+  initPositions,
+  startWatching,
+  getOpenPositions,
+  getOpenP2PPositions,
+  getPositionsForOwner,
+  getP2PPositionsForOwner,
+} from "./keepers/positionTracker.js";
+import { reconcile } from "./keepers/positionReconciler.js";
 import { handleMarketOpenSettlement } from "./keepers/p2pSettlementKeeper.js";
 import { logger } from "./utils/logger.js";
 import express from "express";
 import cors from "cors";
 import type { PriceTick } from "./types/index.js";
+
+function serializeBigints(obj: object): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    result[k] = typeof v === "bigint" ? v.toString() : v;
+  }
+  return result;
+}
+
+function serializeRow(row: Record<string, unknown>): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(row)) {
+    if (v !== null && typeof v === "object" && "toString" in v) {
+      // Prisma Decimal
+      result[k] = v.toString();
+    } else if (v instanceof Date) {
+      result[k] = v.toISOString();
+    } else {
+      result[k] = v;
+    }
+  }
+  return result;
+}
 
 async function main() {
   logger.info("Main", "CTC-Perps Oracle Service starting...");
@@ -84,18 +115,66 @@ async function main() {
     res.json({ status: "ok", timestamp: Date.now() });
   });
 
+  // Position endpoints
+  app.get("/api/positions", async (req, res) => {
+    const owner = req.query.owner as string | undefined;
+    const status = req.query.status as string | undefined;
+    const feedId = req.query.feedId ? parseInt(req.query.feedId as string) : undefined;
+
+    if (getPrisma()) {
+      const rows = await queryPositionsByType("trading", owner, status);
+      res.json(rows.map(serializeRow));
+    } else {
+      // Fallback: in-memory (open only)
+      const positions = owner ? getPositionsForOwner(owner) : getOpenPositions(feedId);
+      res.json(positions.map(serializeBigints));
+    }
+  });
+
+  app.get("/api/positions/p2p", async (req, res) => {
+    const owner = req.query.owner as string | undefined;
+    const status = req.query.status as string | undefined;
+
+    if (getPrisma()) {
+      const rows = await queryPositionsByType("p2p", owner, status);
+      res.json(rows.map(serializeRow));
+    } else {
+      const positions = owner ? getP2PPositionsForOwner(owner) : getOpenP2PPositions();
+      res.json(positions.map(serializeBigints));
+    }
+  });
+
+  app.get("/api/positions/history", async (req, res) => {
+    const owner = req.query.owner as string | undefined;
+    const feedId = req.query.feedId ? parseInt(req.query.feedId as string) : undefined;
+
+    if (getPrisma()) {
+      const rows = await queryPositions(owner, feedId);
+      res.json(rows.map(serializeRow));
+    } else {
+      // In-memory: can only return open positions
+      const trading = owner ? getPositionsForOwner(owner) : getOpenPositions(feedId);
+      const p2p = owner ? getP2PPositionsForOwner(owner) : getOpenP2PPositions();
+      res.json([...trading.map(serializeBigints), ...p2p.map(serializeBigints)]);
+    }
+  });
+
   app.listen(config.apiPort, () => {
     logger.info("API", `REST API listening on port ${config.apiPort}`);
   });
 
-  // Initialize position tracker (replay historical events, then watch live)
-  if (config.tradingAddress) {
-    try {
-      await replayHistoricalPositions();
-      startWatching();
-    } catch (err) {
-      logger.warn("Main", `Position tracker init failed: ${(err as Error).message}`);
-    }
+  // Initialize position tracker (DB-backed or chain replay + live watchers)
+  try {
+    await initPositions();
+    startWatching();
+  } catch (err) {
+    logger.warn("Main", `Position tracker init failed: ${(err as Error).message}`);
+  }
+
+  // Start reconciler: every 30 minutes
+  if (getPrisma()) {
+    setInterval(reconcile, 30 * 60 * 1000);
+    logger.info("Main", "Position reconciler scheduled (every 30 min)");
   }
 
   // Start price fetcher with processing pipeline
