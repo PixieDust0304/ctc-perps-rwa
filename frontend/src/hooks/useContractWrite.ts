@@ -37,13 +37,17 @@ export function useContractWrite() {
           ? err.message
           : typeof err === "string"
             ? err
-            : "Transaction rejected";
-      const match = msg.match(/reason:\s*(.+?)(?:\n|$)/);
-      const short = match
-        ? match[1].slice(0, 80)
-        : msg.length > 80
-          ? msg.slice(0, 80) + "..."
-          : msg;
+            : "";
+      const isRejected =
+        /user rejected|user denied|rejected the request|user cancelled/i.test(msg) ||
+        (err as { code?: number })?.code === 4001;
+      if (isRejected) {
+        toast.error("Transaction rejected", { id });
+        return undefined;
+      }
+      const reason = msg.match(/reason:\s*(.+?)(?:\n|$)/);
+      const revert = msg.match(/reverted with.*?:\s*(.+?)(?:\n|"|$)/);
+      const short = reason?.[1]?.slice(0, 80) ?? revert?.[1]?.slice(0, 80) ?? "Transaction failed";
       toast.error(short, { id });
       return undefined;
     }

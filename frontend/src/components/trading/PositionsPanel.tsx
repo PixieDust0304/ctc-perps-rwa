@@ -888,7 +888,7 @@ export function PositionsPanel({
 
 function mapRow(row: any, type: "trading" | "p2p"): PositionData {
   return {
-    positionId: row.positionId as `0x${string}`,
+    positionId: (row.positionId ?? row.id) as `0x${string}`,
     feedId: row.feedId,
     isLong: row.isLong,
     collateral: row.collateral?.toString() ?? "0",
