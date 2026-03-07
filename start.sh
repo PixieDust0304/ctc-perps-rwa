@@ -24,7 +24,38 @@ ANVIL_PORT=8545
 WS_PORT=8080
 API_PORT=3001
 FRONTEND_PORT=3000
-DB_URL="postgresql://$(whoami)@localhost:5432/ctc_perps?host=/var/run/postgresql"
+
+# Platform detection
+OS="$(uname)"
+
+# Detect PostgreSQL paths (macOS Homebrew vs Linux)
+PG_BINDIR=""
+PG_DATADIR=""
+if [[ "$OS" == "Darwin" ]]; then
+  for prefix in /opt/homebrew /usr/local; do
+    for ver in postgresql@16 postgresql@15 postgresql; do
+      if [ -x "$prefix/opt/$ver/bin/psql" ]; then
+        PG_BINDIR="$prefix/opt/$ver/bin"
+        break 2
+      fi
+    done
+  done
+  for prefix in /opt/homebrew /usr/local; do
+    for ver in postgresql@16 postgresql@15 postgresql; do
+      if [ -d "$prefix/var/$ver" ]; then
+        PG_DATADIR="$prefix/var/$ver"
+        break 2
+      fi
+    done
+  done
+fi
+
+# Database URL (macOS uses TCP, Linux uses unix socket)
+if [[ "$OS" == "Darwin" ]]; then
+  DB_URL="postgresql://$(whoami)@localhost:5432/ctc_perps"
+else
+  DB_URL="postgresql://$(whoami)@localhost:5432/ctc_perps?host=/var/run/postgresql"
+fi
 
 PIDS=()
 
@@ -35,13 +66,10 @@ cleanup() {
     kill "$pid" 2>/dev/null || true
   done
   wait 2>/dev/null || true
-  # Stop PostgreSQL (only runs with the protocol)
-  for pgdir in /opt/homebrew/opt/postgresql@15/bin /opt/homebrew/opt/postgresql@16/bin /opt/homebrew/opt/postgresql/bin; do
-    if [ -x "$pgdir/pg_ctl" ]; then
-      "$pgdir/pg_ctl" -D /opt/homebrew/var/postgresql@15 stop -m fast 2>/dev/null || true
-      break
-    fi
-  done
+  # Stop PostgreSQL if we started it (macOS only — Linux uses systemd)
+  if [[ "$OS" == "Darwin" ]] && [ -n "$PG_BINDIR" ] && [ -n "$PG_DATADIR" ]; then
+    "$PG_BINDIR/pg_ctl" -D "$PG_DATADIR" stop -m fast 2>/dev/null || true
+  fi
   echo "Done."
 }
 trap cleanup EXIT INT TERM
@@ -87,17 +115,17 @@ rm -rf "$CONTRACTS_DIR/broadcast/"
 
 # ─── 0b. Start PostgreSQL & wipe database ────────────────────────
 log "Starting PostgreSQL..."
-# macOS: Homebrew keg-only PostgreSQL may not be in PATH
-for pgdir in /opt/homebrew/opt/postgresql@15/bin /opt/homebrew/opt/postgresql@16/bin /opt/homebrew/opt/postgresql/bin; do
-  [ -x "$pgdir/psql" ] && export PATH="$pgdir:$PATH" && break
-done
-# macOS: Start via pg_ctl if available
-if [[ "$(uname)" == "Darwin" ]] && command -v pg_ctl &>/dev/null; then
-  pg_ctl -D /opt/homebrew/var/postgresql@15 -l /tmp/ctc-postgres.log start 2>/dev/null || true
+# Add detected PG bindir to PATH
+if [ -n "$PG_BINDIR" ]; then
+  export PATH="$PG_BINDIR:$PATH"
+fi
+# macOS: Start via pg_ctl
+if [[ "$OS" == "Darwin" ]] && [ -n "$PG_BINDIR" ] && [ -n "$PG_DATADIR" ]; then
+  "$PG_BINDIR/pg_ctl" -D "$PG_DATADIR" -l /tmp/ctc-postgres.log start 2>/dev/null || true
   sleep 2
 fi
 # Linux: ensure systemd service is running
-if [[ "$(uname)" == "Linux" ]] && command -v systemctl &>/dev/null; then
+if [[ "$OS" == "Linux" ]] && command -v systemctl &>/dev/null; then
   systemctl is-active --quiet postgresql || log "WARNING: PostgreSQL service not running. Start with: sudo systemctl start postgresql"
 fi
 log "Wiping database..."

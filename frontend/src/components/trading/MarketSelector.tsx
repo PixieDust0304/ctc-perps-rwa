@@ -59,13 +59,16 @@ export function MarketSelector({
               onClick={() => onSelect(feed.id)}
               className={`
                 group flex items-center gap-2.5 px-4 py-2 rounded-xl transition-all whitespace-nowrap
+                outline-none focus:outline-none focus-visible:outline-none
                 ${isSelected ? "card-surface" : "hover:bg-white/[0.03]"}
               `}
               style={isSelected ? {
                 background: "var(--coal-lighter)",
                 border: "1px solid rgba(255, 212, 0, 0.15)",
                 boxShadow: "0 4px 12px rgba(0, 0, 0, 0.3), 0 0 20px rgba(255, 212, 0, 0.05)",
-              } : undefined}
+              } : {
+                border: "1px solid transparent",
+              }}
             >
               {/* Metallic emoji badge */}
               <div

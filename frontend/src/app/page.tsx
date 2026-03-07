@@ -34,13 +34,15 @@ export default function TradingPage() {
             boxShadow: "0 2px 8px rgba(0, 0, 0, 0.3)",
           }}
         >
-          <div className="flex items-center gap-3">
-            <PacManLogo size={24} />
-            <div className="-ml-2.5"><MiniCandles /></div>
-            <h1 className="font-pixel text-base font-bold tracking-tight" style={{ color: "var(--pixel-yellow)" }}>
-              PERP MAN
+          <div className="flex items-baseline gap-0.5">
+            <div className="flex items-center gap-0.5 self-center">
+              <PacManLogo size={24} />
+              <MiniCandles />
+            </div>
+            <h1 className="font-pixel text-base font-bold tracking-tight mr-2 leading-none" style={{ color: "var(--pixel-yellow)" }}>
+              pErp-man
             </h1>
-            <span className="text-[10px] font-body uppercase tracking-widest" style={{ color: "var(--dim-text)" }}>
+            <span className="text-[10px] font-body uppercase tracking-widest leading-none" style={{ color: "var(--dim-text)" }}>
               Arcade energy for perpetual trading
             </span>
           </div>

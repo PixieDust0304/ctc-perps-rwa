@@ -26,7 +26,7 @@ export default function PoolPage() {
             <PacManLogo size={24} />
             <div className="-ml-2.5"><MiniCandles /></div>
             <h1 className="font-pixel text-base font-bold tracking-tight" style={{ color: "var(--pixel-yellow)" }}>
-              PERP MAN
+              pErp-man
             </h1>
             <span className="text-[10px] font-body uppercase tracking-widest" style={{ color: "var(--dim-text)" }}>
               Liquidity Pool
