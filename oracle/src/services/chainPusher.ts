@@ -14,6 +14,7 @@ import { checkAndLiquidateAll } from "../keepers/liquidationEngine.js";
 import type { PriceTick } from "../types/index.js";
 
 let lastPushedTimestamps: Record<number, number> = {};
+let hasEverPushed = false;
 
 /**
  * Push price ticks to the Oracle contract onchain
@@ -24,9 +25,10 @@ export async function pushPrices(ticks: PriceTick[]): Promise<void> {
     return;
   }
 
-  // Filter: only fresh ticks with real prices and newer timestamps
+  // First push: include stale ticks so on-chain Oracle has data for MarketState
+  // After that: only push fresh ticks
   const filteredTicks = ticks.filter(
-    (t) => t.fresh && t.rawPrice > 0n && t.timestamp > (lastPushedTimestamps[t.feedId] || 0)
+    (t) => t.rawPrice > 0n && t.timestamp > (lastPushedTimestamps[t.feedId] || 0) && (t.fresh || !hasEverPushed)
   );
   if (filteredTicks.length === 0) return;
 
@@ -78,6 +80,7 @@ export async function pushPrices(ticks: PriceTick[]): Promise<void> {
   }
 
   // Always update last pushed timestamps to avoid re-attempting same data
+  hasEverPushed = true;
   for (const tick of filteredTicks) {
     lastPushedTimestamps[tick.feedId] = tick.timestamp;
   }

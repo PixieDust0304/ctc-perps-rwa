@@ -272,6 +272,22 @@ export const CUSTODY_ABI = [
   },
 ] as const;
 
+export const VAMM_ABI = [
+  {
+    name: "vamms",
+    type: "function",
+    inputs: [{ name: "feedId", type: "uint16" }],
+    outputs: [
+      { name: "virtualBase", type: "uint256" },
+      { name: "virtualQuote", type: "uint256" },
+      { name: "k", type: "uint256" },
+      { name: "depthMultiplier", type: "uint256" },
+      { name: "active", type: "bool" },
+    ],
+    stateMutability: "view",
+  },
+] as const;
+
 export const MOCK_USDC_ABI = [
   ...ERC20_ABI,
   {

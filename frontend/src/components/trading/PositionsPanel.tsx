@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useAccount, useReadContracts, usePublicClient } from "wagmi";
 import { parseUnits, formatEther, decodeEventLog, type Address } from "viem";
 import toast from "react-hot-toast";
-import { CONTRACTS, TRADING_ABI, P2P_TRADING_ABI, ERC20_ABI, CUSTODY_ADDRESSES, CUSTODY_ABI } from "../../lib/contracts";
+import { CONTRACTS, TRADING_ABI, P2P_TRADING_ABI, ERC20_ABI, CUSTODY_ADDRESSES, CUSTODY_ABI, VAMM_ABI } from "../../lib/contracts";
 import { useContractWrite } from "../../hooks/useContractWrite";
 import { PnLPopup } from "./PnLPopup";
 import type { PositionUpdate } from "../../hooks/useWebSocket";
@@ -88,6 +88,36 @@ export function PositionsPanel({
     contracts: custodyContracts.length > 0 ? custodyContracts : [],
     query: { refetchInterval: 5000 },
   });
+
+  // Read VAMM state for feeds with P2P positions (for simulated exit PnL)
+  const p2pFeedIds = [...new Set(p2pPositions.map((p) => p.feedId))];
+  const vammContracts = CONTRACTS.vamm
+    ? p2pFeedIds.map((fid) => ({
+        address: CONTRACTS.vamm as Address,
+        abi: VAMM_ABI,
+        functionName: "vamms" as const,
+        args: [fid] as const,
+      }))
+    : [];
+  const { data: vammData } = useReadContracts({
+    contracts: vammContracts.length > 0 ? vammContracts : [],
+    query: { refetchInterval: 3000 },
+  });
+
+  // Build VAMM state per feed: { virtualBase, virtualQuote, active }
+  const vammByFeed = new Map<number, { vBase: number; vQuote: number; active: boolean }>();
+  if (vammData) {
+    p2pFeedIds.forEach((fid, idx) => {
+      const result = vammData[idx]?.result as [bigint, bigint, bigint, bigint, boolean] | undefined;
+      if (result) {
+        vammByFeed.set(fid, {
+          vBase: Number(result[0]) / 1e18,
+          vQuote: Number(result[1]) / 1e18,
+          active: result[4],
+        });
+      }
+    });
+  }
 
   // Build fee info per feed
   const feeInfoByFeed = new Map<number, { baseFeeRateLong: number; baseFeeRateShort: number; fundingPerHour: number }>();
@@ -448,13 +478,35 @@ export function PositionsPanel({
   };
 
   const getPnl = (pos: PositionData) => {
-    const currentPriceData = prices.find((p) => p.id === pos.feedId);
-    if (!currentPriceData || currentPriceData.price <= 0) return null;
     const entry = Number(pos.entryPrice) / 1e18;
-    const current = currentPriceData.price;
     const collateral = Number(pos.collateral);
     const sizeUsd = Number(pos.sizeUsd);
     if (collateral === 0) return null;
+
+    // For P2P positions: simulate reverse swap to get actual exit price
+    if (pos.type === "p2p") {
+      const vamm = vammByFeed.get(pos.feedId);
+      if (!vamm || !vamm.active) return null;
+      const sizeUsdFloat = sizeUsd / 1e18;
+      // reverseSwap math (VAMM.sol):
+      // Long close: newQuote = vQuote - sizeUsd → exitPrice = newQuote / vBase
+      // Short close: newQuote = vQuote + sizeUsd → exitPrice = newQuote / vBase
+      const exitPrice = pos.isLong
+        ? (vamm.vQuote - sizeUsdFloat) / vamm.vBase
+        : (vamm.vQuote + sizeUsdFloat) / vamm.vBase;
+      const priceChange = pos.isLong
+        ? (exitPrice - entry) / entry
+        : (entry - exitPrice) / entry;
+      return {
+        pnlPercent: priceChange * 100, // P2P is always 1x
+        pnlUsd: (collateral / 1e18) * priceChange,
+      };
+    }
+
+    // For trading positions: use spot price (oracle-based)
+    const currentPriceData = prices.find((p) => p.id === pos.feedId);
+    if (!currentPriceData || currentPriceData.price <= 0) return null;
+    const current = currentPriceData.price;
     const leverage = sizeUsd / collateral;
     const priceChange = pos.isLong
       ? (current - entry) / entry

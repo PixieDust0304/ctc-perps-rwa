@@ -52,6 +52,26 @@ async function initializeVAMMForFeed(feedId: number): Promise<void> {
     return;
   }
 
+  // Check if VAMM is already active (e.g. deploy script already initialized it)
+  try {
+    const publicClient = createPublicClient({
+      chain: creditcoinLocal,
+      transport: http(config.rpcUrl),
+    });
+    const vammState = await publicClient.readContract({
+      address: config.vammAddress as Hex,
+      abi: VAMMABI,
+      functionName: "vamms",
+      args: [feedId],
+    }) as [bigint, bigint, bigint, bigint, boolean];
+    if (vammState[4]) {
+      logger.info("P2PSettlement", `VAMM already active for feed ${feedId}, skipping initialization`);
+      return;
+    }
+  } catch {
+    // Read failed — proceed with initialization attempt
+  }
+
   // Dynamic depth: read custody LP liquidity, calculate depth = max(lpLiq * bps / 10000, minDepth)
   const custodyAddr = config.custodyAddresses[feedId];
   if (custodyAddr) {

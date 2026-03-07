@@ -21,6 +21,20 @@ export async function initDatabase(): Promise<boolean> {
     });
     await prisma.$connect();
     logger.info("DB", "Prisma connected to PostgreSQL");
+
+    // Repair: fix positions where closedAt is set but status is still "open"
+    try {
+      const { count } = await prisma.positionRecord.updateMany({
+        where: { closedAt: { not: null }, status: "open" },
+        data: { status: "settled" },
+      });
+      if (count > 0) {
+        logger.info("DB", `Repaired ${count} position(s) with stale open status`);
+      }
+    } catch (err) {
+      logger.warn("DB", `Position repair failed: ${err}`);
+    }
+
     return true;
   } catch (err) {
     logger.warn("DB", `Prisma connection failed — falling back to in-memory: ${err}`);
@@ -225,7 +239,6 @@ export async function persistPosition(pos: {
         collateral: pos.collateral,
         sizeUsd: pos.sizeUsd,
         entryPrice: pos.entryPrice,
-        status: "open",
       },
       create: {
         positionId: pos.positionId,

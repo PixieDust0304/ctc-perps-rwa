@@ -248,7 +248,12 @@ async function main() {
       }
     }
 
-    // 3. Detect market state changes
+    // 3. Push to chain first — ensures on-chain Oracle has prices before settlement
+    if (config.oracleAddress) {
+      await pushPrices(ticks);
+    }
+
+    // 4. Detect market state changes (after prices are on-chain)
     const stateChanges = detectMarketStateChanges(ticks);
     if (stateChanges.length > 0) {
       broadcastMarketState(stateChanges);
@@ -259,13 +264,8 @@ async function main() {
         logMarketState(sc.feedId, sc.isOpen ? "open" : "closed", tick?.price.toString() ?? null, new Date(sc.timestamp));
       }
 
-      // Handle market opens (P2P settlement with coordinator lock)
+      // Handle market state transitions (P2P settlement with coordinator lock)
       await handleMarketOpenSettlement(stateChanges);
-    }
-
-    // 4. Push to chain + post-push hooks (fee accrual + liquidation in same tick)
-    if (config.oracleAddress) {
-      await pushPrices(ticks);
     }
   });
 

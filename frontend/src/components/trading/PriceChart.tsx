@@ -371,9 +371,17 @@ export function PriceChart({
         if (feedIdRef.current !== feedId) return;
 
         const cutoff = Date.now() - selected.lookbackMs;
-        marketStatesRef.current = data
-          .filter((s) => s.timestamp >= cutoff)
-          .sort((a, b) => a.timestamp - b.timestamp);
+        const inRange = data.filter((s) => s.timestamp >= cutoff);
+
+        // Always include the most recent state (current active state) even if
+        // its timestamp predates the visible range — it means the entire chart
+        // is within that state. snapToNearestCandle will pin it to the left edge.
+        if (inRange.length === 0 && data.length > 0) {
+          const sorted = [...data].sort((a, b) => b.timestamp - a.timestamp);
+          inRange.push(sorted[0]);
+        }
+
+        marketStatesRef.current = inRange.sort((a, b) => a.timestamp - b.timestamp);
 
         drawOverlayLines();
       } catch {

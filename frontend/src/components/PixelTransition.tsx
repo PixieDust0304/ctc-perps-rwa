@@ -47,7 +47,10 @@ export function PixelTransition({ children }: { children: React.ReactNode }) {
         const t1 = setTimeout(() => {
             const cols = el.querySelectorAll<HTMLElement>(".px-col");
             cols.forEach((c, i) => {
-                c.style.animation = `pxRise 300ms ${i * 20}ms cubic-bezier(0.4,0,0.2,1) forwards`;
+                // Pin at translateY(0) before swapping animation to prevent
+                // snap-back to the initial inline translateY(-101%)
+                c.style.transform = "translateY(0)";
+                c.style.animation = `pxRise 300ms ${i * 20}ms cubic-bezier(0.4,0,0.2,1) both`;
             });
         }, 500);
 
