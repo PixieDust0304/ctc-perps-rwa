@@ -12,7 +12,7 @@ interface IVAMM {
 
     event VAMMInitialized(uint16 indexed feedId, uint256 baseReserve, uint256 quoteReserve, uint256 k);
     event VAMMDeactivated(uint16 indexed feedId);
-    event VAMMSwap(uint16 indexed feedId, bool isLong, uint256 sizeUsd, uint256 priceAfter);
+    event VAMMSwap(uint16 indexed feedId, bool isLong, uint256 sizeUsd, uint256 avgExecutionPrice);
 
     function initializeVAMM(uint16 feedId, uint256 spotPrice) external;
     function deactivateVAMM(uint16 feedId) external;

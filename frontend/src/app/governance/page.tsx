@@ -2,7 +2,7 @@
 
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { GovernancePanel } from "../../components/governance/GovernancePanel";
-import { AppSidebar } from "../../components/AppSidebar";
+import { AppSidebar, PacManLogo, MiniCandles } from "../../components/AppSidebar";
 
 export default function GovernancePage() {
   return (
@@ -22,6 +22,8 @@ export default function GovernancePage() {
           }}
         >
           <div className="flex items-center gap-3">
+            <PacManLogo size={24} />
+            <div className="-ml-2.5"><MiniCandles /></div>
             <h1 className="font-pixel text-base font-bold tracking-tight" style={{ color: "var(--pixel-yellow)" }}>
               PERP MAN
             </h1>

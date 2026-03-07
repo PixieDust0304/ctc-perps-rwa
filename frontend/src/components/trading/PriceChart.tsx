@@ -8,6 +8,7 @@ import {
   ColorType,
   type LineData,
   type Time,
+  type SeriesMarker,
 } from "lightweight-charts";
 
 const INTERVALS = [
@@ -41,9 +42,11 @@ export function PriceChart({
   isVammPrice = false,
 }: PriceChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const overlayRef = useRef<HTMLCanvasElement | null>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   const feedIdRef = useRef(feedId);
+  const marketStatesRef = useRef<{ state: string; timestamp: number }[]>([]);
 
   const [selectedIdx, setSelectedIdx] = useState(0); // default 1m
   const [movement, setMovement] = useState<{ changePercent: number } | null>(null);
@@ -160,10 +163,68 @@ export function PriceChart({
     chartRef.current = chart;
     seriesRef.current = series;
 
+    const drawOverlayLines = () => {
+      const canvas = overlayRef.current;
+      const ch = chartRef.current;
+      if (!canvas || !ch) return;
+      const ts = ch.timeScale();
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+
+      const rect = canvas.parentElement?.getBoundingClientRect();
+      if (!rect) return;
+      canvas.width = rect.width;
+      canvas.height = rect.height;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      for (const ms of marketStatesRef.current) {
+        const timeSec = Math.floor(ms.timestamp / 1000) as Time;
+        const x = ts.timeToCoordinate(timeSec);
+        if (x === null || x < 0 || x > canvas.width) continue;
+
+        const isClosed = ms.state === "closed";
+        const purple = isClosed ? "rgba(168, 85, 247, 0.6)" : "rgba(139, 92, 246, 0.5)";
+        const glowPurple = isClosed ? "rgba(168, 85, 247, 0.15)" : "rgba(139, 92, 246, 0.1)";
+
+        // Glow
+        ctx.save();
+        ctx.shadowColor = purple;
+        ctx.shadowBlur = 12;
+        ctx.strokeStyle = purple;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, canvas.height);
+        ctx.stroke();
+        ctx.restore();
+
+        // Wider glow band
+        const grad = ctx.createLinearGradient(x - 8, 0, x + 8, 0);
+        grad.addColorStop(0, "transparent");
+        grad.addColorStop(0.5, glowPurple);
+        grad.addColorStop(1, "transparent");
+        ctx.fillStyle = grad;
+        ctx.fillRect(x - 8, 0, 16, canvas.height);
+
+        // Label near top
+        const label = isClosed ? "Market Closed" : "Market Open";
+        ctx.save();
+        ctx.font = "bold 10px monospace";
+        ctx.fillStyle = "#c084fc";
+        ctx.shadowColor = "rgba(168, 85, 247, 0.8)";
+        ctx.shadowBlur = 6;
+        ctx.textAlign = "center";
+        ctx.fillText(label, x, 16);
+        ctx.restore();
+      }
+    };
+
     const handleResize = () => {
       if (containerRef.current) {
         chart.applyOptions({ width: containerRef.current.clientWidth });
       }
+      // Redraw overlay after resize settles
+      requestAnimationFrame(drawOverlayLines);
     };
     window.addEventListener("resize", handleResize);
 
@@ -201,9 +262,45 @@ export function PriceChart({
       }
     };
 
-    fetchCandles();
+    const fetchMarketStates = async () => {
+      try {
+        const res = await fetch(
+          `${apiUrl}/api/market-states?feedId=${feedId}&limit=200`
+        );
+        if (!res.ok) return;
+        const data: { state: string; timestamp: number }[] = await res.json();
+        if (feedIdRef.current !== feedId) return;
+
+        const cutoff = Date.now() - selected.lookbackMs;
+        marketStatesRef.current = data
+          .filter((s) => s.timestamp >= cutoff)
+          .sort((a, b) => a.timestamp - b.timestamp);
+
+        // Set markers on the series
+        if (seriesRef.current && marketStatesRef.current.length > 0) {
+          const markers: SeriesMarker<Time>[] = marketStatesRef.current.map((s) => ({
+            time: (Math.floor(s.timestamp / 1000)) as Time,
+            position: "aboveBar" as const,
+            color: s.state === "closed" ? "#a855f7" : "#8b5cf6",
+            shape: "circle" as const,
+            text: s.state === "closed" ? "Closed" : "Open",
+          }));
+          seriesRef.current.setMarkers(markers);
+        }
+
+        drawOverlayLines();
+      } catch {
+        // Market state API not available
+      }
+    };
+
+    fetchCandles().then(fetchMarketStates);
+
+    // Redraw overlay on scroll/zoom
+    chart.timeScale().subscribeVisibleTimeRangeChange(drawOverlayLines);
 
     return () => {
+      chart.timeScale().unsubscribeVisibleTimeRangeChange(drawOverlayLines);
       window.removeEventListener("resize", handleResize);
       chart.remove();
       chartRef.current = null;
@@ -298,7 +395,14 @@ export function PriceChart({
         </div>
       </div>
 
-      <div ref={containerRef} className="w-full" />
+      <div className="relative w-full">
+        <div ref={containerRef} className="w-full" />
+        <canvas
+          ref={overlayRef}
+          className="absolute top-0 left-0 w-full h-full pointer-events-none"
+          style={{ zIndex: 10 }}
+        />
+      </div>
     </div>
   );
 }

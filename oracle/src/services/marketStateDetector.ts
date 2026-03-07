@@ -36,8 +36,7 @@ export function detectMarketStateChanges(ticks: PriceTick[]): MarketStateUpdate[
   for (const tick of ticks) {
     let state = feedStates[tick.feedId];
 
-    // First reading ever — initialize and emit if market is open
-    // (on-chain MarketState defaults to false, so we must push the initial open)
+    // First reading ever — initialize and emit initial state
     if (!state) {
       feedStates[tick.feedId] = {
         isOpen: tick.fresh,
@@ -46,15 +45,13 @@ export function detectMarketStateChanges(ticks: PriceTick[]): MarketStateUpdate[
         lastTransitionAt: now,
       };
 
-      if (tick.fresh) {
-        updates.push({
-          feedId: tick.feedId,
-          isOpen: true,
-          timestamp: tick.timestamp,
-        });
-        const feedName = config.feedNames[tick.feedId] || `Feed ${tick.feedId}`;
-        logger.info("MarketState", `${feedName} market OPEN (initial)`);
-      }
+      updates.push({
+        feedId: tick.feedId,
+        isOpen: tick.fresh,
+        timestamp: tick.timestamp,
+      });
+      const feedName = config.feedNames[tick.feedId] || `Feed ${tick.feedId}`;
+      logger.info("MarketState", `${feedName} market ${tick.fresh ? "OPEN" : "CLOSED"} (initial)`);
       continue;
     }
 

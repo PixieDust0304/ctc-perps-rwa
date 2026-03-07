@@ -88,6 +88,8 @@ contract VAMM is IVAMM, OwnableUpgradeable, UUPSUpgradeable {
         VirtualPool storage v = vamms[feedId];
         require(v.active, "VAMM: not active");
 
+        uint256 baseBefore = v.virtualBase;
+
         if (isLong) {
             // Trader buys base: adds quote, removes base
             // new_quote = quote + sizeUsd
@@ -106,7 +108,7 @@ contract VAMM is IVAMM, OwnableUpgradeable, UUPSUpgradeable {
             v.virtualBase = newBase;
         }
 
-        executionPrice = v.virtualQuote.divFp(v.virtualBase);
+        executionPrice = v.virtualQuote.divFp(baseBefore);
         emit VAMMSwap(feedId, isLong, sizeUsd, executionPrice);
     }
 
@@ -114,6 +116,8 @@ contract VAMM is IVAMM, OwnableUpgradeable, UUPSUpgradeable {
     function reverseSwap(uint16 feedId, bool isLong, uint256 sizeUsd) external onlyAuthorized returns (uint256 executionPrice) {
         VirtualPool storage v = vamms[feedId];
         require(v.active, "VAMM: not active");
+
+        uint256 baseBefore = v.virtualBase;
 
         // Reverse: opposite of swap
         if (isLong) {
@@ -131,7 +135,7 @@ contract VAMM is IVAMM, OwnableUpgradeable, UUPSUpgradeable {
             v.virtualBase = newBase;
         }
 
-        executionPrice = v.virtualQuote.divFp(v.virtualBase);
+        executionPrice = v.virtualQuote.divFp(baseBefore);
         emit VAMMSwap(feedId, !isLong, sizeUsd, executionPrice);
     }
 

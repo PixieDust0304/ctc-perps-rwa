@@ -51,6 +51,14 @@ export function PositionsPanel({
   const [loading, setLoading] = useState(false);
   const [addCollateralId, setAddCollateralId] = useState<string | null>(null);
   const [addCollateralAmount, setAddCollateralAmount] = useState("");
+  const [now, setNow] = useState(Date.now());
+
+  // Tick every minute to update position ages
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(id);
+  }, []);
+
   const [pnlPopup, setPnlPopup] = useState<{
     isOpen: boolean;
     pnlUsd: number;
@@ -183,16 +191,24 @@ export function PositionsPanel({
     } catch { }
   }, [address]);
 
-  const fetchCurrent = useCallback(() => {
+  const fetchAll = useCallback(async () => {
     setLoading(true);
-    if (tab === "trading") fetchTrading().finally(() => setLoading(false));
-    else if (tab === "p2p") fetchP2P().finally(() => setLoading(false));
-    else fetchHistory().finally(() => setLoading(false));
-  }, [tab, fetchTrading, fetchP2P, fetchHistory]);
+    try {
+      await Promise.all([fetchTrading(), fetchP2P(), fetchHistory()]);
+    } finally {
+      setLoading(false);
+    }
+  }, [fetchTrading, fetchP2P, fetchHistory]);
+
+  // Fetch all on mount, tab change, and every 10s
+  useEffect(() => {
+    fetchAll();
+  }, [fetchAll]);
 
   useEffect(() => {
-    fetchCurrent();
-  }, [fetchCurrent]);
+    const id = setInterval(fetchAll, 10_000);
+    return () => clearInterval(id);
+  }, [fetchAll]);
 
   // WebSocket updates
   useEffect(() => {
@@ -234,8 +250,10 @@ export function PositionsPanel({
         setTradingPositions((prev) =>
           prev.filter((p) => p.positionId !== posId)
         );
-        // Refresh history if on that tab
-        if (tab === "history") fetchHistory();
+        setP2PPositions((prev) =>
+          prev.filter((p) => p.positionId !== posId)
+        );
+        fetchAll();
       } else if (update.action === "collateralAdded" && isOwner) {
         // Update collateral directly in local state
         const newCol = (pos.newCollateral as string) ?? (pos.collateral as string);
@@ -249,15 +267,13 @@ export function PositionsPanel({
           setP2PPositions((prev) =>
             prev.filter((p) => p.positionId !== posId)
           );
-        } else {
-          fetchP2P();
         }
-        if (tab === "history") fetchHistory();
+        fetchAll();
       }
     });
 
     return unsub;
-  }, [onPositionUpdate, address, tab, fetchTrading, fetchP2P, fetchHistory]);
+  }, [onPositionUpdate, address, tab, fetchAll]);
 
   const handleClose = async (pos: PositionData) => {
     if (!CONTRACTS.trading || !publicClient) return;
@@ -290,6 +306,9 @@ export function PositionsPanel({
     );
 
     if (hash) {
+      // Optimistically remove from local state
+      setTradingPositions((prev) => prev.filter((p) => p.positionId !== pos.positionId));
+
       try {
         const receipt = await publicClient.getTransactionReceipt({ hash });
         for (const log of receipt.logs) {
@@ -325,6 +344,9 @@ export function PositionsPanel({
       } catch {
         // Receipt fetch failed, no popup
       }
+
+      // Refresh all tabs to update counts + history
+      fetchAll();
     }
   };
 
@@ -355,6 +377,9 @@ export function PositionsPanel({
     );
 
     if (hash) {
+      // Optimistically remove from local state
+      setP2PPositions((prev) => prev.filter((p) => p.positionId !== pos.positionId));
+
       try {
         const receipt = await publicClient.getTransactionReceipt({ hash });
         for (const log of receipt.logs) {
@@ -388,6 +413,9 @@ export function PositionsPanel({
       } catch {
         // Receipt fetch failed
       }
+
+      // Refresh all tabs to update counts + history
+      fetchAll();
     }
   };
 
@@ -415,7 +443,7 @@ export function PositionsPanel({
     if (result) {
       setAddCollateralId(null);
       setAddCollateralAmount("");
-      fetchTrading();
+      fetchAll();
     }
   };
 
@@ -446,6 +474,37 @@ export function PositionsPanel({
     const leverage = sizeUsd / collateral;
     const moveToLiq = (1 - MAINTENANCE_MARGIN) / leverage;
     return pos.isLong ? entry * (1 - moveToLiq) : entry * (1 + moveToLiq);
+  };
+
+  const formatAge = (openedAt: string | undefined) => {
+    if (!openedAt) return null;
+    const openedMs = openedAt.includes("T")
+      ? new Date(openedAt).getTime()
+      : Number(openedAt) * 1000;
+    const diffMs = now - openedMs;
+    if (diffMs < 0) return null;
+    const totalMins = Math.floor(diffMs / 60000);
+    const days = Math.floor(totalMins / 1440);
+    const hrs = Math.floor((totalMins % 1440) / 60);
+    const mins = totalMins % 60;
+    let age = "";
+    if (days > 0) age += `${days}d `;
+    if (hrs > 0 || days > 0) age += `${hrs}h `;
+    age += `${mins}m`;
+    return age.trim();
+  };
+
+  const formatAbsoluteTime = (openedAt: string | undefined) => {
+    if (!openedAt) return null;
+    const date = openedAt.includes("T")
+      ? new Date(openedAt)
+      : new Date(Number(openedAt) * 1000);
+    const dd = String(date.getDate()).padStart(2, "0");
+    const mm = String(date.getMonth() + 1).padStart(2, "0");
+    const yyyy = date.getFullYear();
+    const hh = String(date.getHours()).padStart(2, "0");
+    const min = String(date.getMinutes()).padStart(2, "0");
+    return `${dd}/${mm}/${yyyy} ${hh}:${min}`;
   };
 
   if (!address) {
@@ -527,11 +586,12 @@ export function PositionsPanel({
           ))}
         </div>
         <button
-          onClick={fetchCurrent}
-          className="text-xs font-pixel hover:text-white transition-colors"
+          onClick={fetchAll}
+          disabled={loading}
+          className="text-xs font-pixel hover:text-white transition-colors disabled:opacity-50"
           style={{ color: "var(--muted-text)" }}
         >
-          Refresh
+          {loading ? "..." : "Refresh"}
         </button>
       </div>
 
@@ -619,6 +679,11 @@ export function PositionsPanel({
                     {pos.type === "trading" && isOpen && (
                       <span className="text-orange-400">
                         Liq: ${getLiquidationPrice(pos).toFixed(2)}
+                      </span>
+                    )}
+                    {pos.openedAt && (
+                      <span className="text-gray-500" title={formatAbsoluteTime(pos.openedAt) ?? ""}>
+                        {formatAge(pos.openedAt)} ago · {formatAbsoluteTime(pos.openedAt)}
                       </span>
                     )}
                   </div>

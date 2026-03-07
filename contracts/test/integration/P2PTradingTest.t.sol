@@ -20,7 +20,7 @@ contract P2PTradingTest is TestSetup {
 
     uint256 constant GOLD_RAW = 30377000000000;
     uint256 constant GOLD_PRICE = 3037.7e18;
-    uint256 constant VAMM_DEPTH = 150_000e18; // ~30% of custody LP liquidity
+    uint256 constant VAMM_DEPTH = 500_000e18; // ~80% of custody LP liquidity
 
     function setUp() public override {
         super.setUp();
@@ -209,5 +209,23 @@ contract P2PTradingTest is TestSetup {
         // Both positions should be settled
         assertEq(p2pTrading.p2pLongOI(GOLD_FEED), 0);
         assertEq(p2pTrading.p2pShortOI(GOLD_FEED), 0);
+    }
+
+    function test_entryPrice_isAverageNotPostSwap() public {
+        uint256 spotBefore = vamm.getVAMMPrice(GOLD_FEED);
+
+        vm.startPrank(user2);
+        usdc.approve(address(p2pTrading), 10_000e18);
+        p2pTrading.openP2PPosition(GOLD_FEED, true, 10_000e18);
+        vm.stopPrank();
+
+        uint256 spotAfter = vamm.getVAMMPrice(GOLD_FEED);
+
+        bytes32 posId = keccak256(abi.encodePacked(user2, uint256(1), "p2p"));
+        (, , , , , uint256 entryPrice, , ) = p2pTrading.positions(posId);
+
+        // Average execution price must be BETWEEN pre-swap and post-swap spot
+        assertGt(entryPrice, spotBefore, "Entry > pre-swap spot (impact exists)");
+        assertLt(entryPrice, spotAfter, "Entry < post-swap spot (average, not marginal)");
     }
 }

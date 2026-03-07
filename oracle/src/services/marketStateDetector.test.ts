@@ -1,6 +1,17 @@
-import { describe, it, expect, beforeEach } from "vitest";
-import { detectMarketStateChanges, isMarketOpen } from "./marketStateDetector.js";
+import { describe, it, expect, vi } from "vitest";
 import type { PriceTick } from "../types/index.js";
+
+// Mock the config module to use test-friendly values
+vi.mock("../config/index.js", () => ({
+  config: {
+    feedNames: { 9001: "TestA", 9002: "TestB", 9003: "TestC", 9004: "TestD", 9005: "TestE", 9006: "TestF", 9007: "TestG", 9010: "TestH" },
+    marketCloseConfirmations: 1,
+    marketOpenConfirmations: 1,
+    marketStateCooldownMs: 0,
+  },
+}));
+
+import { detectMarketStateChanges, isMarketOpen } from "./marketStateDetector.js";
 
 function makeTick(feedId: number, fresh: boolean, timestamp = Date.now()): PriceTick {
   return {
@@ -13,22 +24,24 @@ function makeTick(feedId: number, fresh: boolean, timestamp = Date.now()): Price
 }
 
 describe("marketStateDetector", () => {
-  // Note: the module has global state. Tests depend on execution order.
-  // First tick for a feed sets the state, subsequent ticks detect transitions.
-
   describe("detectMarketStateChanges", () => {
-    it("returns empty on first tick (no previous state to compare)", () => {
-      // Use a unique feed ID to avoid interference
+    it("emits initial state on first tick", () => {
       const updates = detectMarketStateChanges([makeTick(9001, true)]);
-      expect(updates).toEqual([]);
+      expect(updates.length).toBe(1);
+      expect(updates[0].feedId).toBe(9001);
+      expect(updates[0].isOpen).toBe(true);
+    });
+
+    it("emits initial closed state on first tick", () => {
+      const updates = detectMarketStateChanges([makeTick(9010, false)]);
+      expect(updates.length).toBe(1);
+      expect(updates[0].feedId).toBe(9010);
+      expect(updates[0].isOpen).toBe(false);
     });
 
     it("detects transition from open to closed", () => {
-      // Set initial state
       detectMarketStateChanges([makeTick(9002, true)]);
-      // Transition to closed
       const updates = detectMarketStateChanges([makeTick(9002, false)]);
-
       expect(updates.length).toBe(1);
       expect(updates[0].feedId).toBe(9002);
       expect(updates[0].isOpen).toBe(false);
@@ -37,7 +50,6 @@ describe("marketStateDetector", () => {
     it("detects transition from closed to open", () => {
       detectMarketStateChanges([makeTick(9003, false)]);
       const updates = detectMarketStateChanges([makeTick(9003, true)]);
-
       expect(updates.length).toBe(1);
       expect(updates[0].feedId).toBe(9003);
       expect(updates[0].isOpen).toBe(true);
@@ -50,11 +62,8 @@ describe("marketStateDetector", () => {
     });
 
     it("handles multiple feeds in single batch", () => {
-      // Initialize both feeds
       detectMarketStateChanges([makeTick(9005, true), makeTick(9006, false)]);
-      // Transition both
       const updates = detectMarketStateChanges([makeTick(9005, false), makeTick(9006, true)]);
-
       expect(updates.length).toBe(2);
       expect(updates.find((u) => u.feedId === 9005)?.isOpen).toBe(false);
       expect(updates.find((u) => u.feedId === 9006)?.isOpen).toBe(true);

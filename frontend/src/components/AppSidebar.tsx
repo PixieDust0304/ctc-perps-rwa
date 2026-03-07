@@ -32,25 +32,58 @@ function IconGovernance({ size = 20 }: { size?: number }) {
     );
 }
 
-/* Pac-Man SVG Logo */
-function PacManLogo({ size = 32 }: { size?: number }) {
+/* Pac-Man SVG Logo — pixel art with mouth open */
+export function PacManLogo({ size = 32 }: { size?: number }) {
     return (
-        <svg width={size} height={size} viewBox="0 0 32 32" style={{ imageRendering: "pixelated" }}>
-            <rect x="10" y="2" width="12" height="2" fill="#FFD400" />
-            <rect x="6" y="4" width="20" height="2" fill="#FFD400" />
-            <rect x="4" y="6" width="24" height="2" fill="#FFD400" />
-            <rect x="2" y="8" width="28" height="2" fill="#FFD400" />
-            <rect x="2" y="10" width="18" height="2" fill="#FFD400" />
-            <rect x="2" y="12" width="12" height="2" fill="#FFD400" />
-            <rect x="2" y="14" width="12" height="2" fill="#FFD400" />
-            <rect x="2" y="16" width="18" height="2" fill="#FFD400" />
-            <rect x="2" y="18" width="28" height="2" fill="#FFD400" />
-            <rect x="2" y="20" width="28" height="2" fill="#FF8A00" />
-            <rect x="4" y="22" width="24" height="2" fill="#FF8A00" />
-            <rect x="6" y="24" width="20" height="2" fill="#FF8A00" />
-            <rect x="10" y="26" width="12" height="2" fill="#FF8A00" />
-            <rect x="12" y="6" width="4" height="4" fill="#0A0A0A" />
-            <rect x="14" y="6" width="2" height="2" fill="#F5F5F5" />
+        <svg width={size} height={size} viewBox="0 0 32 32" fill="none" style={{ imageRendering: "pixelated" }}>
+            <rect x="8" y="2" width="16" height="2" fill="#FFD400" />
+            <rect x="6" y="4" width="4" height="2" fill="#FFD400" />
+            <rect x="10" y="4" width="12" height="2" fill="#FFD400" />
+            <rect x="22" y="4" width="4" height="2" fill="#FFD400" />
+            <rect x="4" y="6" width="4" height="2" fill="#FFD400" />
+            <rect x="8" y="6" width="16" height="2" fill="#FFD400" />
+            <rect x="24" y="6" width="4" height="2" fill="#FFD400" />
+            <rect x="2" y="8" width="6" height="2" fill="#FFD400" />
+            <rect x="8" y="8" width="16" height="2" fill="#FFD400" />
+            <rect x="24" y="8" width="6" height="2" fill="#FFD400" />
+            <rect x="2" y="10" width="6" height="2" fill="#FFD400" />
+            <rect x="8" y="10" width="10" height="2" fill="#FFD400" />
+            <rect x="2" y="12" width="6" height="2" fill="#FFD400" />
+            <rect x="8" y="12" width="6" height="2" fill="#FFD400" />
+            <rect x="2" y="14" width="6" height="2" fill="#FFD400" />
+            <rect x="8" y="14" width="6" height="2" fill="#FFD400" />
+            <rect x="2" y="16" width="6" height="2" fill="#FFD400" />
+            <rect x="8" y="16" width="10" height="2" fill="#FFD400" />
+            <rect x="2" y="18" width="6" height="2" fill="#FFD400" />
+            <rect x="8" y="18" width="16" height="2" fill="#FFD400" />
+            <rect x="24" y="18" width="6" height="2" fill="#FFD400" />
+            <rect x="4" y="20" width="4" height="2" fill="#FFD400" />
+            <rect x="8" y="20" width="16" height="2" fill="#FFD400" />
+            <rect x="24" y="20" width="4" height="2" fill="#FFD400" />
+            <rect x="4" y="22" width="4" height="2" fill="#FFD400" />
+            <rect x="8" y="22" width="16" height="2" fill="#FFD400" />
+            <rect x="24" y="22" width="4" height="2" fill="#FFD400" />
+            <rect x="6" y="24" width="4" height="2" fill="#FFD400" />
+            <rect x="10" y="24" width="12" height="2" fill="#FFD400" />
+            <rect x="22" y="24" width="4" height="2" fill="#FFD400" />
+            <rect x="8" y="26" width="16" height="2" fill="#FFD400" />
+            {/* Eye */}
+            <rect x="10" y="8" width="4" height="4" fill="#0A0A0A" />
+            <rect x="12" y="8" width="2" height="2" fill="#F5F5F5" />
+        </svg>
+    );
+}
+
+/* Small candlestick bars for header */
+export function MiniCandles() {
+    return (
+        <svg width="16" height="20" viewBox="0 0 16 20" fill="none" style={{ imageRendering: "pixelated" }}>
+            <rect x="2" y="4" width="2" height="2" fill="#00E676" />
+            <rect x="1" y="6" width="4" height="6" fill="#00E676" />
+            <rect x="2" y="12" width="2" height="2" fill="#00E676" />
+            <rect x="10" y="2" width="2" height="2" fill="#FF3B3B" />
+            <rect x="9" y="4" width="4" height="8" fill="#FF3B3B" />
+            <rect x="10" y="12" width="2" height="4" fill="#FF3B3B" />
         </svg>
     );
 }
@@ -61,8 +94,9 @@ const NAV_ITEMS = [
     { href: "/governance", icon: IconGovernance, label: "Govern" },
 ];
 
-export function AppSidebar() {
+export function AppSidebar({ connected }: { connected?: boolean } = {}) {
     const pathname = usePathname();
+    const isConnected = connected ?? true;
 
     return (
         <aside className="sidebar-dark w-[72px] flex flex-col items-center py-4 gap-3 shrink-0">
@@ -112,13 +146,15 @@ export function AppSidebar() {
                 <div
                     className="w-3 h-3 rounded-full"
                     style={{
-                        background: "var(--profit-green)",
-                        boxShadow: "0 0 8px var(--profit-green-glow)",
+                        background: isConnected ? "var(--profit-green)" : "var(--trade-red)",
+                        boxShadow: isConnected
+                            ? "0 0 8px var(--profit-green-glow)"
+                            : "0 0 8px var(--trade-red-glow)",
                         animation: "ambient-pulse 2s ease-in-out infinite",
                     }}
                 />
                 <span className="text-[9px] font-pixel" style={{ color: "var(--dim-text)" }}>
-                    LIVE
+                    {isConnected ? "LIVE" : "..."}
                 </span>
             </div>
         </aside>

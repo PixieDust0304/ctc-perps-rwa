@@ -57,8 +57,8 @@ export const config = {
   signerPrivateKey: process.env.SIGNER_PRIVATE_KEY || "",
 
   // VAMM depth config (dynamic depth = custody LP liquidity * bps / 10000, floor = minDepth)
-  vammDepthBps: 3000, // 30% of custody LP liquidity
-  vammMinDepth: "20000000000000000000000" as const, // $20K floor in wei (20_000e18)
+  vammDepthBps: 8000, // 80% of custody LP liquidity
+  vammMinDepth: "100000000000000000000000" as const, // $100K floor in wei (100_000e18)
 
   // Timings
   fetchIntervalMs: 500,

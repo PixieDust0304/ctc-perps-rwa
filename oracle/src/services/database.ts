@@ -127,6 +127,9 @@ export async function queryCandles(
   }
 }
 
+// In-memory market state log (always populated, used as fallback when no DB)
+const inMemoryMarketStates: { feedId: number; state: string; price: string | null; timestamp: number }[] = [];
+
 /**
  * Log a market state change
  */
@@ -136,6 +139,18 @@ export async function logMarketState(
   price: string | null,
   timestamp: Date
 ): Promise<void> {
+  // Always store in-memory
+  inMemoryMarketStates.push({
+    feedId,
+    state,
+    price,
+    timestamp: timestamp.getTime(),
+  });
+  // Cap at 1000 entries
+  if (inMemoryMarketStates.length > 1000) {
+    inMemoryMarketStates.splice(0, inMemoryMarketStates.length - 1000);
+  }
+
   if (!prisma) return;
 
   try {
@@ -149,6 +164,40 @@ export async function logMarketState(
     });
   } catch (err) {
     logger.warn("DB", `Failed to log market state: ${err}`);
+  }
+}
+
+/**
+ * Query market state transitions for a feed
+ */
+export async function queryMarketStates(
+  feedId: number,
+  limit: number = 100
+): Promise<{ feedId: number; state: string; price: string | null; timestamp: number }[]> {
+  if (!prisma) {
+    // In-memory fallback
+    return inMemoryMarketStates
+      .filter((s) => s.feedId === feedId)
+      .slice(-limit)
+      .reverse();
+  }
+
+  try {
+    const rows = await prisma.marketStateLog.findMany({
+      where: { feedId },
+      orderBy: { timestamp: "desc" },
+      take: limit,
+    });
+
+    return rows.map((r) => ({
+      feedId: r.feedId,
+      state: r.state,
+      price: r.price?.toString() ?? null,
+      timestamp: r.timestamp.getTime(),
+    }));
+  } catch (err) {
+    logger.warn("DB", `Failed to query market states: ${err}`);
+    return [];
   }
 }
 

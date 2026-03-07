@@ -211,6 +211,8 @@ contract P2PTrading is IP2PTrading, OwnableUpgradeable, UUPSUpgradeable, Pausabl
         }
 
         emit P2PPositionClosed(positionId, pos.owner, realizedPnl);
+
+        _autoSweep(pos.feedId);
     }
 
     /// @notice Batch settle all P2P positions at market open (called by keeper)
@@ -274,6 +276,8 @@ contract P2PTrading is IP2PTrading, OwnableUpgradeable, UUPSUpgradeable, Pausabl
         if (settledCount > 0) {
             emit P2PBatchSettled(feedId, settledCount, settlementPrice);
         }
+
+        _autoSweep(feedId);
     }
 
     function _calculateP2PPnL(
@@ -323,6 +327,16 @@ contract P2PTrading is IP2PTrading, OwnableUpgradeable, UUPSUpgradeable, Pausabl
         if (leftover > 0) {
             usdc.safeTransfer(address(pool), leftover);
             pool.receiveFees(leftover);
+        }
+    }
+
+    function _autoSweep(uint16 feedId) private {
+        if (p2pEscrowBalance[feedId] == 0 && p2pLongOI[feedId] == 0 && p2pShortOI[feedId] == 0) {
+            uint256 leftover = usdc.balanceOf(address(this));
+            if (leftover > 0) {
+                usdc.safeTransfer(address(pool), leftover);
+                pool.receiveFees(leftover);
+            }
         }
     }
 

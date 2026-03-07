@@ -3,7 +3,7 @@ import { startFetcher } from "./services/fetcher.js";
 import { pushPrices } from "./services/chainPusher.js";
 import { storePriceTicks, getCandlesAsync, getLatestPrice, getPriceMovement } from "./services/priceStore.js";
 import { detectMarketStateChanges } from "./services/marketStateDetector.js";
-import { initDatabase, queryPositions, queryPositionsByType, getPrisma, logMarketState } from "./services/database.js";
+import { initDatabase, queryPositions, queryPositionsByType, queryMarketStates, getPrisma, logMarketState } from "./services/database.js";
 import {
   startWebSocketServer,
   broadcastPrices,
@@ -117,6 +117,17 @@ async function main() {
 
   app.get("/api/health", (_req, res) => {
     res.json({ status: "ok", timestamp: Date.now() });
+  });
+
+  app.get("/api/market-states", async (req, res) => {
+    const feedId = parseInt((req.query.feedId as string) || "0");
+    const limit = parseInt((req.query.limit as string) || "100");
+    if (!feedId) {
+      res.status(400).json({ error: "feedId required" });
+      return;
+    }
+    const rows = await queryMarketStates(feedId, limit);
+    res.json(rows);
   });
 
   // Position endpoints

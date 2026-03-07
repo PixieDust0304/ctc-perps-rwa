@@ -25,11 +25,11 @@ contract DeployLocal is Script {
     uint16 constant CRUDE_OIL = 2003;
     uint16 constant PLATINUM = 2062;
 
-    // VAMM depths (virtual depth in USD, 18 decimals) — ~30% of 500K custody
-    uint256 constant GOLD_DEPTH = 150_000e18;
-    uint256 constant SILVER_DEPTH = 150_000e18;
-    uint256 constant CRUDE_OIL_DEPTH = 150_000e18;
-    uint256 constant PLATINUM_DEPTH = 150_000e18;
+    // VAMM depths (virtual depth in USD, 18 decimals) — ~80% of custody LP liquidity
+    uint256 constant GOLD_DEPTH = 500_000e18;
+    uint256 constant SILVER_DEPTH = 500_000e18;
+    uint256 constant CRUDE_OIL_DEPTH = 500_000e18;
+    uint256 constant PLATINUM_DEPTH = 500_000e18;
 
     function run() external {
         uint256 deployerKey = vm.envUint("DEPLOYER_PRIVATE_KEY");
