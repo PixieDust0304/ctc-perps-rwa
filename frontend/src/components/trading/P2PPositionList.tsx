@@ -14,6 +14,8 @@ interface P2PPositionData {
   status?: string;
 }
 
+const ORACLE_API = process.env.NEXT_PUBLIC_ORACLE_API_URL || "http://localhost:3001";
+
 const FEED_NAMES: Record<number, string> = {
   2056: "Gold",
   2069: "Silver",
@@ -36,7 +38,7 @@ export function P2PPositionList({
 
     try {
       const res = await fetch(
-        `http://localhost:3001/api/positions/p2p?owner=${address}&status=open`
+        `${ORACLE_API}/api/positions/p2p?owner=${address}&status=open`
       );
       if (res.ok) {
         const data = await res.json();

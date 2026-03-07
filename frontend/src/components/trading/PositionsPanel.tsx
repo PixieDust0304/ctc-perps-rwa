@@ -9,6 +9,7 @@ import { useContractWrite } from "../../hooks/useContractWrite";
 import { PnLPopup } from "./PnLPopup";
 import type { PositionUpdate } from "../../hooks/useWebSocket";
 
+const ORACLE_API = process.env.NEXT_PUBLIC_ORACLE_API_URL || "http://localhost:3001";
 const MIN_OPEN_TIME_TRADING = 300; // seconds — must match Trading.sol
 const MIN_OPEN_TIME_P2P = 10; // seconds — must match P2PTrading.sol
 
@@ -184,7 +185,7 @@ export function PositionsPanel({
     if (!address) return;
     try {
       const res = await fetch(
-        `http://localhost:3001/api/positions?owner=${address}&status=open`
+        `${ORACLE_API}/api/positions?owner=${address}&status=open`
       );
       if (res.ok) {
         const data = await res.json();
@@ -197,7 +198,7 @@ export function PositionsPanel({
     if (!address) return;
     try {
       const res = await fetch(
-        `http://localhost:3001/api/positions/p2p?owner=${address}&status=open`
+        `${ORACLE_API}/api/positions/p2p?owner=${address}&status=open`
       );
       if (res.ok) {
         const data = await res.json();
@@ -210,7 +211,7 @@ export function PositionsPanel({
     if (!address) return;
     try {
       const res = await fetch(
-        `http://localhost:3001/api/positions/history?owner=${address}`
+        `${ORACLE_API}/api/positions/history?owner=${address}`
       );
       if (res.ok) {
         const data = await res.json();

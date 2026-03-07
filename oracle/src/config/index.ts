@@ -75,7 +75,7 @@ export const config = {
 
   // Server
   wsPort: Number(process.env.WS_PORT || "8080"),
-  apiPort: Number(process.env.API_PORT || "3001"),
+  apiPort: Number(process.env.PORT || process.env.API_PORT || "3001"),
 
   // Database
   databaseUrl: process.env.DATABASE_URL || "",

@@ -54,7 +54,7 @@ export function PriceChart({
   feedId,
   feedName,
   currentPrice,
-  apiUrl = "http://localhost:3001",
+  apiUrl = process.env.NEXT_PUBLIC_ORACLE_API_URL || "http://localhost:3001",
   isVammPrice = false,
 }: PriceChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);

@@ -1,6 +1,6 @@
 import { createWalletClient, http, encodeAbiParameters, parseAbiParameters, keccak256, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { creditcoinLocal } from "../config/chains.js";
+import { getChain } from "../config/chains.js";
 import { config } from "../config/index.js";
 
 export function getSignerAccount() {
@@ -12,7 +12,7 @@ export function getWalletClient() {
   const account = getSignerAccount();
   return createWalletClient({
     account,
-    chain: creditcoinLocal,
+    chain: getChain(),
     transport: http(config.rpcUrl),
   });
 }

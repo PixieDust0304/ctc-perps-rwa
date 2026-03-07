@@ -21,7 +21,6 @@ SIGNER_PRIVATE_KEY="0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b
 SIGNER_ADDRESS="0x70997970C51812dc3A010C7d01b50e0d17dc79C8"
 
 ANVIL_PORT=8545
-WS_PORT=8080
 API_PORT=3001
 FRONTEND_PORT=3000
 
@@ -82,7 +81,7 @@ log() {
 log "Cleaning up stale processes..."
 # Kill anything on our ports (try multiple times to be thorough)
 for attempt in 1 2; do
-  for port in $ANVIL_PORT $WS_PORT $API_PORT $FRONTEND_PORT; do
+  for port in $ANVIL_PORT $API_PORT $FRONTEND_PORT; do
     pids=$(lsof -ti ":$port" 2>/dev/null || true)
     if [ -n "$pids" ]; then
       for pid in $pids; do
@@ -101,7 +100,7 @@ pkill -9 -f "next-server" 2>/dev/null || true
 sleep 2
 
 # Verify ports are free
-for port in $ANVIL_PORT $WS_PORT $API_PORT $FRONTEND_PORT; do
+for port in $ANVIL_PORT $API_PORT $FRONTEND_PORT; do
   if lsof -ti ":$port" &>/dev/null; then
     log "ERROR: Port $port still in use after cleanup!"
     lsof -i ":$port" 2>/dev/null
@@ -283,7 +282,6 @@ SIGNER_PRIVATE_KEY="$SIGNER_PRIVATE_KEY" \
 RPC_URL="http://127.0.0.1:$ANVIL_PORT" \
 DATABASE_URL="$DB_URL" \
 CHAIN_ID=31337 \
-WS_PORT=$WS_PORT \
 API_PORT=$API_PORT \
 npx tsx src/index.ts &
 PIDS+=($!)
@@ -298,7 +296,7 @@ for i in $(seq 1 30); do
 done
 
 if curl -s "http://127.0.0.1:$API_PORT/api/health" > /dev/null 2>&1; then
-  log "Oracle service ready (WS: $WS_PORT, API: $API_PORT, PID ${PIDS[${#PIDS[@]}-1]})."
+  log "Oracle service ready (API+WS: $API_PORT, PID ${PIDS[${#PIDS[@]}-1]})."
 else
   log "WARNING: Oracle API not responding yet — it may still be starting up."
 fi
@@ -319,8 +317,8 @@ NEXT_PUBLIC_PMLP_ADDRESS="$PMLP_ADDRESS" \
 NEXT_PUBLIC_PRPMAN_ADDRESS="$PRPMAN_ADDRESS" \
 NEXT_PUBLIC_FEE_MANAGER_ADDRESS="$FEE_MANAGER_ADDRESS" \
 NEXT_PUBLIC_CUSTODY_ADDRESSES="{\"2056\":\"$CUSTODY_GOLD\",\"2069\":\"$CUSTODY_SILVER\",\"2003\":\"$CUSTODY_CRUDE_OIL\",\"2062\":\"$CUSTODY_PLATINUM\"}" \
-NEXT_PUBLIC_WS_URL="ws://localhost:$WS_PORT" \
-NEXT_PUBLIC_API_URL="http://localhost:$API_PORT" \
+NEXT_PUBLIC_ORACLE_WS_URL="ws://localhost:$API_PORT" \
+NEXT_PUBLIC_ORACLE_API_URL="http://localhost:$API_PORT" \
 NEXT_PUBLIC_RPC_URL="http://127.0.0.1:$ANVIL_PORT" \
 NEXT_PUBLIC_CHAIN_ID=31337 \
 npx next dev --port $FRONTEND_PORT &
@@ -342,8 +340,7 @@ echo "========================================="
 echo "  pErp-man Local Stack Running"
 echo "========================================="
 echo "  Anvil RPC:     http://127.0.0.1:$ANVIL_PORT  (PID ${PIDS[0]})"
-echo "  Oracle WS:     ws://localhost:$WS_PORT"
-echo "  Oracle API:    http://localhost:$API_PORT      (PID ${PIDS[1]})"
+echo "  Oracle API+WS: http://localhost:$API_PORT      (PID ${PIDS[1]})"
 echo "  Frontend:      http://localhost:$FRONTEND_PORT      (PID ${PIDS[2]})"
 echo ""
 echo "  Deployer:      $DEPLOYER_ADDRESS"

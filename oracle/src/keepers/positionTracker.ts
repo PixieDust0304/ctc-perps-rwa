@@ -1,6 +1,6 @@
 import { createPublicClient, http, type Hex } from "viem";
 import { config } from "../config/index.js";
-import { creditcoinLocal } from "../config/chains.js";
+import { getChain } from "../config/chains.js";
 import { TradingABI, P2PTradingABI, VAMMABI } from "../abi/index.js";
 import { logger } from "../utils/logger.js";
 import { getPrisma, persistPosition, updatePositionStatus, updatePositionCollateral, queryPositionsByType } from "../services/database.js";
@@ -43,7 +43,7 @@ let publicClient: ReturnType<typeof createPublicClient>;
 function getPublicClient() {
   if (!publicClient) {
     publicClient = createPublicClient({
-      chain: creditcoinLocal,
+      chain: getChain(),
       transport: http(config.rpcUrl),
       pollingInterval: 1_000,
     });

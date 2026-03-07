@@ -1,6 +1,6 @@
 import { createPublicClient, http, type Hex } from "viem";
 import { config } from "../config/index.js";
-import { creditcoinLocal } from "../config/chains.js";
+import { getChain } from "../config/chains.js";
 import { TradingABI, P2PTradingABI } from "../abi/index.js";
 import { logger } from "../utils/logger.js";
 import { getAllOpenPositionIds, updatePositionStatus, persistPosition, getPrisma, logKeeperEvent } from "../services/database.js";
@@ -21,7 +21,7 @@ export async function reconcile(): Promise<void> {
   logger.info("Reconciler", "Starting reconciliation sweep...");
 
   const client = createPublicClient({
-    chain: creditcoinLocal,
+    chain: getChain(),
     transport: http(config.rpcUrl),
   });
 

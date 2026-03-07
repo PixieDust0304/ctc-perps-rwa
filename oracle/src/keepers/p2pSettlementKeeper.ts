@@ -1,6 +1,6 @@
 import { createPublicClient, http, type Hex } from "viem";
 import { config } from "../config/index.js";
-import { creditcoinLocal } from "../config/chains.js";
+import { getChain } from "../config/chains.js";
 import { P2PTradingABI, OracleABI, MarketStateABI, VAMMABI, CustodyABI } from "../abi/index.js";
 import { getWalletClient } from "../utils/signing.js";
 import { getLatestPrice } from "../services/priceStore.js";
@@ -55,7 +55,7 @@ async function initializeVAMMForFeed(feedId: number): Promise<void> {
   // Check if VAMM is already active (e.g. deploy script already initialized it)
   try {
     const publicClient = createPublicClient({
-      chain: creditcoinLocal,
+      chain: getChain(),
       transport: http(config.rpcUrl),
     });
     const vammState = await publicClient.readContract({
@@ -77,7 +77,7 @@ async function initializeVAMMForFeed(feedId: number): Promise<void> {
   if (custodyAddr) {
     try {
       const publicClient = createPublicClient({
-        chain: creditcoinLocal,
+        chain: getChain(),
         transport: http(config.rpcUrl),
       });
       const lpLiq = await publicClient.readContract({
@@ -108,7 +108,7 @@ async function initializeVAMMForFeed(feedId: number): Promise<void> {
     async () => {
       const walletClient = getWalletClient();
       const publicClient = createPublicClient({
-        chain: creditcoinLocal,
+        chain: getChain(),
         transport: http(config.rpcUrl),
       });
 
@@ -136,7 +136,7 @@ async function deactivateVAMMForFeed(feedId: number): Promise<void> {
     async () => {
       const walletClient = getWalletClient();
       const publicClient = createPublicClient({
-        chain: creditcoinLocal,
+        chain: getChain(),
         transport: http(config.rpcUrl),
       });
 
@@ -164,7 +164,7 @@ async function updateMarketStateOnChain(feedId: number): Promise<void> {
     async () => {
       const walletClient = getWalletClient();
       const publicClient = createPublicClient({
-        chain: creditcoinLocal,
+        chain: getChain(),
         transport: http(config.rpcUrl),
       });
 
@@ -188,7 +188,7 @@ async function updateMarketStateOnChain(feedId: number): Promise<void> {
 async function settleAllP2PPositions(feedId: number): Promise<void> {
   const walletClient = getWalletClient();
   const publicClient = createPublicClient({
-    chain: creditcoinLocal,
+    chain: getChain(),
     transport: http(config.rpcUrl),
   });
   const p2pAddr = config.p2pTradingAddress as Hex;

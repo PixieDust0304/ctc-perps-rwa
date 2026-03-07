@@ -1,6 +1,6 @@
 import { createPublicClient, http, type Hex } from "viem";
 import { config } from "../config/index.js";
-import { creditcoinLocal } from "../config/chains.js";
+import { getChain } from "../config/chains.js";
 import { TradingABI, CustodyABI } from "../abi/index.js";
 import { getWalletClient } from "../utils/signing.js";
 import { logger } from "../utils/logger.js";
@@ -33,7 +33,7 @@ export async function checkAndLiquidateAll(ticks: PriceTick[]): Promise<void> {
 
   const walletClient = getWalletClient();
   const publicClient = createPublicClient({
-    chain: creditcoinLocal,
+    chain: getChain(),
     transport: http(config.rpcUrl),
   });
 
@@ -133,7 +133,7 @@ function isLiquidatable(
 
 async function refreshCustodyStates(feedIds: number[]): Promise<void> {
   const publicClient = createPublicClient({
-    chain: creditcoinLocal,
+    chain: getChain(),
     transport: http(config.rpcUrl),
   });
 

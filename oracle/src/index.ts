@@ -23,8 +23,9 @@ import { handleMarketOpenSettlement } from "./keepers/p2pSettlementKeeper.js";
 import { logger } from "./utils/logger.js";
 import express from "express";
 import cors from "cors";
+import { createServer } from "http";
 import { createPublicClient, http, type Hex } from "viem";
-import { creditcoinLocal } from "./config/chains.js";
+import { getChain } from "./config/chains.js";
 import { VAMMABI, MarketStateABI } from "./abi/index.js";
 import type { PriceTick } from "./types/index.js";
 
@@ -61,12 +62,17 @@ async function main() {
   const dbReady = await initDatabase();
   logger.info("Main", `Database: ${dbReady ? "PostgreSQL connected" : "in-memory mode"}`);
 
-  // Start WebSocket server
-  startWebSocketServer();
-
   // Start REST API
   const app = express();
-  app.use(cors());
+  app.use(cors({
+    origin: process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(",") : true,
+    credentials: true,
+  }));
+  const httpServer = createServer(app);
+
+  // Attach WebSocket to the HTTP server (single port for Render compatibility)
+  // Falls back to standalone WS port when no HTTP server is passed (local dev with separate ports)
+  startWebSocketServer(httpServer);
 
   app.get("/api/candles/:feedId/:interval", async (req, res) => {
     const feedId = parseInt(req.params.feedId);
@@ -174,8 +180,8 @@ async function main() {
     }
   });
 
-  app.listen(config.apiPort, () => {
-    logger.info("API", `REST API listening on port ${config.apiPort}`);
+  httpServer.listen(config.apiPort, () => {
+    logger.info("API", `REST API + WebSocket listening on port ${config.apiPort}`);
   });
 
   // Initialize position tracker (DB-backed or chain replay + live watchers)
@@ -204,7 +210,7 @@ async function main() {
     if (config.vammAddress && config.marketStateAddress) {
       try {
         const vammClient = createPublicClient({
-          chain: creditcoinLocal,
+          chain: getChain(),
           transport: http(config.rpcUrl),
         });
         const vammPriceUpdates: { feedId: number; price: string; timestamp: number }[] = [];

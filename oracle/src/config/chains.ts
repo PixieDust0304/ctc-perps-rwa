@@ -1,4 +1,5 @@
-import { defineChain } from "viem";
+import { defineChain, type Chain } from "viem";
+import { config } from "./index.js";
 
 export const creditcoinLocal = defineChain({
   id: 31337,
@@ -41,3 +42,14 @@ export const creditcoinMainnet = defineChain({
     },
   },
 });
+
+export function getChain(): Chain {
+  switch (config.chainId) {
+    case 102031:
+      return creditcoinTestnet;
+    case 102030:
+      return creditcoinMainnet;
+    default:
+      return creditcoinLocal;
+  }
+}

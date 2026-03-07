@@ -1,12 +1,15 @@
 import { WebSocketServer, WebSocket } from "ws";
+import type { Server as HttpServer } from "http";
 import { config } from "../config/index.js";
 import { logger } from "../utils/logger.js";
 import type { PriceTick, MarketStateUpdate, WebSocketMessage } from "../types/index.js";
 
 let wss: WebSocketServer | null = null;
 
-export function startWebSocketServer(): WebSocketServer {
-  wss = new WebSocketServer({ port: config.wsPort });
+export function startWebSocketServer(server?: HttpServer): WebSocketServer {
+  wss = server
+    ? new WebSocketServer({ server })
+    : new WebSocketServer({ port: config.wsPort });
 
   wss.on("connection", (ws) => {
     logger.info("WebSocket", "Client connected");
@@ -14,7 +17,8 @@ export function startWebSocketServer(): WebSocketServer {
     ws.on("error", (err) => logger.error("WebSocket", `Client error: ${err.message}`));
   });
 
-  logger.info("WebSocket", `Server started on port ${config.wsPort}`);
+  const listenInfo = server ? "attached to HTTP server" : `standalone on port ${config.wsPort}`;
+  logger.info("WebSocket", `Server started (${listenInfo})`);
   return wss;
 }
 

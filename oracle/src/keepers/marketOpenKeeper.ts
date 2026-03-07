@@ -1,6 +1,6 @@
 import { createPublicClient, http, type Hex } from "viem";
 import { config } from "../config/index.js";
-import { creditcoinLocal } from "../config/chains.js";
+import { getChain } from "../config/chains.js";
 import { getWalletClient } from "../utils/signing.js";
 import { logger } from "../utils/logger.js";
 import { retry } from "../utils/retry.js";
@@ -51,7 +51,7 @@ export async function handleMarketOpen(updates: MarketStateUpdate[]): Promise<vo
         async () => {
           const walletClient = getWalletClient();
           const publicClient = createPublicClient({
-            chain: creditcoinLocal,
+            chain: getChain(),
             transport: http(config.rpcUrl),
           });
 

@@ -23,7 +23,9 @@ export interface VammPriceUpdate {
   timestamp: number;
 }
 
-export function useWebSocket(url: string = "ws://localhost:8080") {
+export function useWebSocket(
+  url: string = process.env.NEXT_PUBLIC_ORACLE_WS_URL || "ws://localhost:3001"
+) {
   const [prices, setPrices] = useState<Record<number, PriceUpdate>>({});
   const [vammPrices, setVammPrices] = useState<Record<number, VammPriceUpdate>>({});
   const [connected, setConnected] = useState(false);

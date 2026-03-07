@@ -4,7 +4,7 @@ import {
   type Hex,
 } from "viem";
 import { config } from "../config/index.js";
-import { creditcoinLocal } from "../config/chains.js";
+import { getChain } from "../config/chains.js";
 import { OracleABI } from "../abi/index.js";
 import { getWalletClient, signPriceBatch } from "../utils/signing.js";
 import { logger } from "../utils/logger.js";
@@ -44,7 +44,7 @@ export async function pushPrices(ticks: PriceTick[]): Promise<void> {
 
         const walletClient = getWalletClient();
         const publicClient = createPublicClient({
-          chain: creditcoinLocal,
+          chain: getChain(),
           transport: http(config.rpcUrl),
         });
 
