@@ -34,6 +34,22 @@ interface PriceChartProps {
   isVammPrice?: boolean;
 }
 
+/** Snap a ms timestamp to the nearest candle time bucket (in seconds) from the data */
+function snapToNearestCandle(timestampMs: number, candleTimes: number[]): number {
+  const sec = Math.floor(timestampMs / 1000);
+  if (candleTimes.length === 0) return sec;
+  let best = candleTimes[0];
+  let bestDist = Math.abs(sec - best);
+  for (const t of candleTimes) {
+    const dist = Math.abs(sec - t);
+    if (dist < bestDist) {
+      best = t;
+      bestDist = dist;
+    }
+  }
+  return best;
+}
+
 export function PriceChart({
   feedId,
   feedName,
@@ -42,11 +58,12 @@ export function PriceChart({
   isVammPrice = false,
 }: PriceChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const overlayRef = useRef<HTMLCanvasElement | null>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const overlayCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const feedIdRef = useRef(feedId);
   const marketStatesRef = useRef<{ state: string; timestamp: number }[]>([]);
+  const candleTimesRef = useRef<number[]>([]);
 
   const [selectedIdx, setSelectedIdx] = useState(0); // default 1m
   const [movement, setMovement] = useState<{ changePercent: number } | null>(null);
@@ -83,7 +100,7 @@ export function PriceChart({
     }
   }, [currentPrice]);
 
-  // Reset on feed switch
+  // Reset on feed or interval switch
   useEffect(() => {
     setPriceDirection("flat");
     setFlash(false);
@@ -92,11 +109,10 @@ export function PriceChart({
     prevDisplayPrice.current = 0;
     if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
     if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current);
-  }, [feedId]);
+  }, [feedId, selectedIdx]);
 
-  // Fetch movement data
-  // Use at least 5min lookback so short intervals (15s, 1m) still have enough ticks
-  const movementLookback = Math.max(selected.lookbackMs, 300_000);
+  // Fetch movement data — use the selected interval's lookback directly
+  const movementLookback = selected.lookbackMs;
   const fetchMovement = useCallback(async () => {
     try {
       const res = await fetch(
@@ -163,58 +179,121 @@ export function PriceChart({
     chartRef.current = chart;
     seriesRef.current = series;
 
+    // Find the chart's internal content pane (the td that holds the plot canvas)
+    // lightweight-charts v4 DOM: container > div(relative) > table > tr > td.chart-pane
+    // The chart pane td contains the actual plot canvases.
+    // We find it by looking for the canvas elements inside the chart container.
+    let chartPane: Element | null = null;
+    const allCanvases = containerRef.current.querySelectorAll("canvas");
+    for (const c of allCanvases) {
+      // The main plot canvas is typically the largest one
+      if (c.clientHeight > 400) {
+        chartPane = c.parentElement;
+        break;
+      }
+    }
+    if (!chartPane) {
+      // Fallback: use the first table cell or first child
+      chartPane = containerRef.current.querySelector("td") || containerRef.current.firstElementChild;
+    }
+
+    if (chartPane) {
+      const el = chartPane as HTMLElement;
+      // Ensure the parent is positioned for absolute children
+      if (getComputedStyle(el).position === "static") {
+        el.style.position = "relative";
+      }
+      const canvas = document.createElement("canvas");
+      canvas.style.position = "absolute";
+      canvas.style.top = "0";
+      canvas.style.left = "0";
+      canvas.style.width = "100%";
+      canvas.style.height = "100%";
+      canvas.style.pointerEvents = "none";
+      canvas.style.zIndex = "10";
+      el.appendChild(canvas);
+      overlayCanvasRef.current = canvas;
+    }
+
     const drawOverlayLines = () => {
-      const canvas = overlayRef.current;
+      const canvas = overlayCanvasRef.current;
       const ch = chartRef.current;
       if (!canvas || !ch) return;
       const ts = ch.timeScale();
+
+      const dpr = window.devicePixelRatio || 1;
+      const w = canvas.clientWidth;
+      const h = canvas.clientHeight;
+      if (w === 0 || h === 0) return;
+      canvas.width = w * dpr;
+      canvas.height = h * dpr;
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
-
-      const rect = canvas.parentElement?.getBoundingClientRect();
-      if (!rect) return;
-      canvas.width = rect.width;
-      canvas.height = rect.height;
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.scale(dpr, dpr);
+      ctx.clearRect(0, 0, w, h);
 
       for (const ms of marketStatesRef.current) {
-        const timeSec = Math.floor(ms.timestamp / 1000) as Time;
-        const x = ts.timeToCoordinate(timeSec);
-        if (x === null || x < 0 || x > canvas.width) continue;
+        const snapped = snapToNearestCandle(ms.timestamp, candleTimesRef.current);
+        const x = ts.timeToCoordinate(snapped as Time);
+        if (x === null || x < 0 || x > w) continue;
 
         const isClosed = ms.state === "closed";
-        const purple = isClosed ? "rgba(168, 85, 247, 0.6)" : "rgba(139, 92, 246, 0.5)";
-        const glowPurple = isClosed ? "rgba(168, 85, 247, 0.15)" : "rgba(139, 92, 246, 0.1)";
+        const purple = isClosed ? "rgba(168, 85, 247, 0.85)" : "rgba(139, 92, 246, 0.75)";
+        const glowPurple = isClosed ? "rgba(168, 85, 247, 0.22)" : "rgba(139, 92, 246, 0.16)";
 
-        // Glow
+        // Wide glow band
+        const grad = ctx.createLinearGradient(x - 20, 0, x + 20, 0);
+        grad.addColorStop(0, "transparent");
+        grad.addColorStop(0.3, glowPurple);
+        grad.addColorStop(0.5, isClosed ? "rgba(168, 85, 247, 0.3)" : "rgba(139, 92, 246, 0.22)");
+        grad.addColorStop(0.7, glowPurple);
+        grad.addColorStop(1, "transparent");
+        ctx.fillStyle = grad;
+        ctx.fillRect(x - 20, 0, 40, h);
+
+        // Vertical line — triple stroke for glow
         ctx.save();
         ctx.shadowColor = purple;
-        ctx.shadowBlur = 12;
+        ctx.shadowBlur = 24;
         ctx.strokeStyle = purple;
-        ctx.lineWidth = 1.5;
+        ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.moveTo(x, 0);
-        ctx.lineTo(x, canvas.height);
+        ctx.lineTo(x, h);
+        ctx.stroke();
+        ctx.stroke();
         ctx.stroke();
         ctx.restore();
 
-        // Wider glow band
-        const grad = ctx.createLinearGradient(x - 8, 0, x + 8, 0);
-        grad.addColorStop(0, "transparent");
-        grad.addColorStop(0.5, glowPurple);
-        grad.addColorStop(1, "transparent");
-        ctx.fillStyle = grad;
-        ctx.fillRect(x - 8, 0, 16, canvas.height);
-
-        // Label near top
+        // Label pill
         const label = isClosed ? "Market Closed" : "Market Open";
         ctx.save();
-        ctx.font = "bold 10px monospace";
-        ctx.fillStyle = "#c084fc";
+        ctx.font = "bold 12px monospace";
+        const textW = ctx.measureText(label).width;
+        const pillX = x - textW / 2 - 10;
+        const pillY = 6;
+        const pillW = textW + 20;
+        const pillH = 22;
+
+        ctx.fillStyle = isClosed ? "rgba(88, 28, 135, 0.85)" : "rgba(67, 56, 202, 0.85)";
+        ctx.beginPath();
+        ctx.roundRect(pillX, pillY, pillW, pillH, 4);
+        ctx.fill();
+
+        ctx.strokeStyle = isClosed ? "rgba(168, 85, 247, 0.6)" : "rgba(139, 92, 246, 0.5)";
+        ctx.lineWidth = 1;
+        ctx.shadowColor = purple;
+        ctx.shadowBlur = 8;
+        ctx.beginPath();
+        ctx.roundRect(pillX, pillY, pillW, pillH, 4);
+        ctx.stroke();
+
+        ctx.fillStyle = "#e9d5ff";
         ctx.shadowColor = "rgba(168, 85, 247, 0.8)";
-        ctx.shadowBlur = 6;
+        ctx.shadowBlur = 4;
         ctx.textAlign = "center";
-        ctx.fillText(label, x, 16);
+        ctx.textBaseline = "middle";
+        ctx.fillText(label, x, pillY + pillH / 2);
         ctx.restore();
       }
     };
@@ -223,10 +302,13 @@ export function PriceChart({
       if (containerRef.current) {
         chart.applyOptions({ width: containerRef.current.clientWidth });
       }
-      // Redraw overlay after resize settles
-      requestAnimationFrame(drawOverlayLines);
     };
     window.addEventListener("resize", handleResize);
+
+    // Use subscribeCrosshairMove for sync redraws — fires on every chart interaction
+    chart.subscribeCrosshairMove(drawOverlayLines);
+    // Also redraw on visible range changes (zoom, scroll without crosshair)
+    chart.timeScale().subscribeVisibleTimeRangeChange(drawOverlayLines);
 
     const fetchCandles = async () => {
       try {
@@ -255,6 +337,11 @@ export function PriceChart({
             })
           );
 
+          // Store candle times for snapping market state markers
+          candleTimesRef.current = sorted.map(
+            (c: { timestamp: number }) => Math.floor(c.timestamp / 1000)
+          );
+
           seriesRef.current?.setData(points);
         }
       } catch {
@@ -276,18 +363,6 @@ export function PriceChart({
           .filter((s) => s.timestamp >= cutoff)
           .sort((a, b) => a.timestamp - b.timestamp);
 
-        // Set markers on the series
-        if (seriesRef.current && marketStatesRef.current.length > 0) {
-          const markers: SeriesMarker<Time>[] = marketStatesRef.current.map((s) => ({
-            time: (Math.floor(s.timestamp / 1000)) as Time,
-            position: "aboveBar" as const,
-            color: s.state === "closed" ? "#a855f7" : "#8b5cf6",
-            shape: "circle" as const,
-            text: s.state === "closed" ? "Closed" : "Open",
-          }));
-          seriesRef.current.setMarkers(markers);
-        }
-
         drawOverlayLines();
       } catch {
         // Market state API not available
@@ -296,12 +371,14 @@ export function PriceChart({
 
     fetchCandles().then(fetchMarketStates);
 
-    // Redraw overlay on scroll/zoom
-    chart.timeScale().subscribeVisibleTimeRangeChange(drawOverlayLines);
-
     return () => {
+      chart.unsubscribeCrosshairMove(drawOverlayLines);
       chart.timeScale().unsubscribeVisibleTimeRangeChange(drawOverlayLines);
       window.removeEventListener("resize", handleResize);
+      if (overlayCanvasRef.current) {
+        overlayCanvasRef.current.remove();
+        overlayCanvasRef.current = null;
+      }
       chart.remove();
       chartRef.current = null;
       seriesRef.current = null;
@@ -369,7 +446,7 @@ export function PriceChart({
           {movement && (
             <span className={`text-xs font-body font-semibold ${movementColor}`}>
               {movementSign}{movement.changePercent.toFixed(2)}%
-              <span className="ml-1 text-[10px]" style={{ color: "var(--dim-text)" }}>{movementLookback > selected.lookbackMs ? "5m" : selected.label}</span>
+              <span className="ml-1 text-[10px]" style={{ color: "var(--dim-text)" }}>{selected.label}</span>
             </span>
           )}
         </div>
@@ -395,14 +472,7 @@ export function PriceChart({
         </div>
       </div>
 
-      <div className="relative w-full">
-        <div ref={containerRef} className="w-full" />
-        <canvas
-          ref={overlayRef}
-          className="absolute top-0 left-0 w-full h-full pointer-events-none"
-          style={{ zIndex: 10 }}
-        />
-      </div>
+      <div ref={containerRef} className="w-full" />
     </div>
   );
 }

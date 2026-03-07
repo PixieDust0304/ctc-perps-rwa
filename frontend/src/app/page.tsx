@@ -8,6 +8,7 @@ import { PriceChart } from "../components/trading/PriceChart";
 import { PositionsPanel } from "../components/trading/PositionsPanel";
 import { FaucetButton } from "../components/trading/FaucetButton";
 import { AppSidebar, PacManLogo, MiniCandles } from "../components/AppSidebar";
+import { Footer } from "../components/Footer";
 import { usePrices } from "../hooks/usePrices";
 import { useState } from "react";
 
@@ -93,37 +94,7 @@ export default function TradingPage() {
           <PositionsPanel prices={prices} onPositionUpdate={onPositionUpdate} />
         </div>
 
-        {/* Footer Credit */}
-        <footer
-          className="flex items-center justify-center py-3 px-4 gap-1 flex-wrap"
-          style={{
-            borderTop: "1px solid var(--coal-border)",
-            background: "var(--void-black)",
-          }}
-        >
-          <span className="text-[10px] font-pixel" style={{ color: "var(--dim-text)" }}>
-            Designed & managed by
-          </span>
-          <a
-            href="https://digitalhexa.in/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[10px] font-pixel transition-all hover:brightness-125"
-            style={{
-              color: "var(--pixel-yellow)",
-              textDecoration: "none",
-              borderBottom: "1px solid rgba(255, 212, 0, 0.3)",
-            }}
-          >
-            Digital Hexa
-          </a>
-          <span className="text-[10px] font-pixel" style={{ color: "var(--dim-text)" }}>
-            ·
-          </span>
-          <span className="text-[10px] font-pixel" style={{ color: "var(--dim-text)" }}>
-            BUSL-1.1
-          </span>
-        </footer>
+        <Footer />
       </div>
 
     </main>
