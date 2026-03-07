@@ -45,3 +45,13 @@ In consideration of the right to use this License's text and the "Business Sourc
 2. To either: (a) specify an additional grant of rights to use that does not impose any additional restriction on the right granted in this License, as the Additional Use Grant; or (b) insert the text "None".
 3. To specify a Change Date.
 4. Not to modify this License in any other way.
+
+---
+
+## Third-Party Notices
+
+This project includes third-party dependencies that are distributed under their own respective licenses. In particular:
+
+- **@walletconnect/ethereum-provider** is licensed under the WalletConnect Community License Agreement by Reown Inc. and is NOT covered by this BUSL-1.1 license.
+
+All other third-party packages retain their original licenses (MIT, Apache-2.0, BSD, ISC, etc.). This BUSL-1.1 license applies solely to the original source code authored by PerpMan in this repository.
