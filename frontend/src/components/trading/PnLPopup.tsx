@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
+import { toPng } from "html-to-image";
+import { PacManLogo } from "../AppSidebar";
 
 interface PnLPopupProps {
   isOpen: boolean;
@@ -15,7 +17,6 @@ interface PnLPopupProps {
   entryPrice: number;
 }
 
-/* ─── Share on Twitter ─────────────────────────────────── */
 function buildTweetUrl(props: {
   pnlUsd: number;
   pnlPercent: number;
@@ -50,66 +51,52 @@ export function PnLPopup({
   entryPrice,
 }: PnLPopupProps) {
   const [visible, setVisible] = useState(false);
-  const [pacPhase, setPacPhase] = useState(0); // 0→1 for pac-man eating progress
-  const [showGhost, setShowGhost] = useState(false);
-  const [confettiPieces, setConfettiPieces] = useState<
-    { id: number; x: number; y: number; rot: number; color: string; size: number; delay: number; shape: string }[]
+  const [particles, setParticles] = useState<
+    { x: number; y: number; size: number; color: string; delay: number; dur: number }[]
   >([]);
-  const animFrameRef = useRef<number>(0);
+  const cardRef = useRef<HTMLDivElement>(null);
 
   const isProfit = pnlUsd >= 0;
 
   useEffect(() => {
     if (isOpen) {
       setVisible(true);
-      setShowGhost(false);
-      setPacPhase(0);
-
-      if (isProfit) {
-        // Generate confetti burst
-        const colors = ["#FFD700", "#FFEB3B", "#F59E0B", "#FF9800", "#FF1744", "#fff", "#00E5FF", "#FF69B4"];
-        const pieces = Array.from({ length: 60 }, (_, i) => {
-          const angle = (Math.PI * 2 * i) / 60 + (Math.random() - 0.5) * 0.5;
-          const dist = 100 + Math.random() * 250;
-          return {
-            id: i,
-            x: Math.cos(angle) * dist,
-            y: Math.sin(angle) * dist - 80,
-            rot: Math.random() * 720 - 360,
-            color: colors[Math.floor(Math.random() * colors.length)],
-            size: Math.random() * 8 + 4,
-            delay: Math.random() * 0.4,
-            shape: Math.random() > 0.6 ? "circle" : Math.random() > 0.5 ? "rect" : "star",
-          };
-        });
-        setConfettiPieces(pieces);
-      } else {
-        // Animate pac-man eating dots
-        setConfettiPieces([]);
-        const start = performance.now();
-        const duration = 2800;
-        const tick = (now: number) => {
-          const p = Math.min((now - start) / duration, 1);
-          setPacPhase(p);
-          if (p >= 0.85) setShowGhost(true);
-          if (p < 1) {
-            animFrameRef.current = requestAnimationFrame(tick);
-          }
-        };
-        animFrameRef.current = requestAnimationFrame(tick);
-      }
+      const cols = isProfit
+        ? ["#FFD400", "#FFEB3B", "#00E676", "#69F0AE", "#F59E0B", "#fff"]
+        : ["#FF1744", "#FF5252", "#FF8A80", "#FF6D00", "#FF9100", "#fff"];
+      setParticles(
+        Array.from({ length: 30 }, () => ({
+          x: Math.random() * 100,
+          y: Math.random() * 100,
+          size: Math.random() * 5 + 2,
+          color: cols[Math.floor(Math.random() * cols.length)],
+          delay: Math.random() * 1,
+          dur: 2.5 + Math.random() * 2,
+        }))
+      );
     } else {
       setVisible(false);
-      setShowGhost(false);
-      setPacPhase(0);
-      setConfettiPieces([]);
-      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     }
-
-    return () => {
-      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
-    };
   }, [isOpen, isProfit]);
+
+  const handleShare = useCallback(async () => {
+    if (!cardRef.current) return;
+    try {
+      const dataUrl = await toPng(cardRef.current, {
+        pixelRatio: 2,
+        backgroundColor: "#0a0a0a",
+      });
+      const link = document.createElement("a");
+      link.download = `perpman-${asset.toLowerCase()}-${isProfit ? "win" : "loss"}.png`;
+      link.href = dataUrl;
+      link.click();
+      const tweetUrl = buildTweetUrl({ pnlUsd, pnlPercent, asset, isLong, leverage, isProfit });
+      window.open(tweetUrl, "_blank", "noopener,noreferrer");
+    } catch {
+      const tweetUrl = buildTweetUrl({ pnlUsd, pnlPercent, asset, isLong, leverage, isProfit });
+      window.open(tweetUrl, "_blank", "noopener,noreferrer");
+    }
+  }, [pnlUsd, pnlPercent, asset, isLong, leverage, isProfit]);
 
   if (!isOpen) return null;
 
@@ -117,7 +104,21 @@ export function PnLPopup({
     ? pnlPercent > 20 ? "WAKA WAKA! 🏆" : pnlPercent > 5 ? "POWER PELLET! ⚡" : "HIGH SCORE! 🎯"
     : pnlPercent < -20 ? "GAME OVER 💀" : pnlPercent < -5 ? "Insert Coin 🪙" : "Try Again 🕹️";
 
-  const dotCount = Math.min(Math.max(Math.ceil(Math.abs(pnlUsd) / 5), 8), 18);
+  const glow = isProfit ? "0, 230, 118" : "255, 23, 68";
+  const accent = isProfit ? "#00E676" : "#FF1744";
+  const accentDim = isProfit ? "rgba(0, 230, 118, 0.15)" : "rgba(255, 23, 68, 0.15)";
+  const accentMid = isProfit ? "rgba(0, 230, 118, 0.25)" : "rgba(255, 23, 68, 0.25)";
+
+  const exitPrice = collateral > 0 && pnlPercent !== 0
+    ? entryPrice * (1 + (isLong ? pnlPercent : -pnlPercent) / (leverage * 100))
+    : entryPrice;
+
+  const stats = [
+    { label: "ENTRY", value: `$${entryPrice.toFixed(2)}` },
+    { label: "EXIT", value: `$${exitPrice.toFixed(2)}` },
+    { label: "SIZE", value: `$${sizeUsd.toFixed(0)}` },
+    { label: "LEVERAGE", value: `${leverage.toFixed(0)}x` },
+  ];
 
   return (
     <div
@@ -136,451 +137,329 @@ export function PnLPopup({
 
       {/* Card */}
       <div
+        ref={cardRef}
         onClick={(e) => e.stopPropagation()}
         className="relative overflow-hidden transition-all duration-500"
         style={{
           width: 480,
           borderRadius: 20,
           background: isProfit
-            ? "linear-gradient(160deg, #1a1500 0%, #0d0a00 30%, #1a1500 60%, #0d0a00 100%)"
-            : "linear-gradient(160deg, #1a0005 0%, #0d0d0d 30%, #1a0005 60%, #0d0d0d 100%)",
-          border: `2px solid ${isProfit ? "rgba(0, 230, 118, 0.25)" : "rgba(255, 23, 68, 0.2)"}`,
-          boxShadow: isProfit
-            ? "0 0 80px rgba(0, 230, 118, 0.12), 0 0 200px rgba(0, 230, 118, 0.04), inset 0 1px 0 rgba(0, 230, 118, 0.1)"
-            : "0 0 80px rgba(255, 23, 68, 0.12), 0 0 200px rgba(255, 23, 68, 0.04), inset 0 1px 0 rgba(255,23,68,0.1)",
-          transform: visible ? "scale(1)" : "scale(0.85)",
+            ? "linear-gradient(160deg, #0a1a05 0%, #050d02 20%, #0a0a0a 45%, #001a0d 70%, #050d02 100%)"
+            : "linear-gradient(160deg, #1a0508 0%, #0d0205 20%, #0a0a0a 45%, #1a0500 70%, #0d0205 100%)",
+          border: `2px solid ${isProfit ? "rgba(0, 230, 118, 0.3)" : "rgba(255, 23, 68, 0.25)"}`,
+          boxShadow: [
+            `0 0 40px rgba(${glow}, 0.2)`,
+            `0 0 100px rgba(${glow}, 0.1)`,
+            `0 0 200px rgba(${glow}, 0.05)`,
+            `inset 0 1px 0 rgba(255, 255, 255, 0.1)`,
+            `inset 0 0 60px rgba(${glow}, 0.03)`,
+          ].join(", "),
+          transform: visible ? "scale(1)" : "scale(0.88)",
           opacity: visible ? 1 : 0,
         }}
       >
-        {/* ════════════════════════════════════════════════
-            ANIMATION ZONE — The main attraction
-            ════════════════════════════════════════════════ */}
+        {/* ─── Gradient border ring ─── */}
         <div
-          className="relative overflow-hidden"
-          style={{ height: 260 }}
-        >
-          {/* ─── PROFIT: Confetti + Duck + Cake ──────── */}
-          {isProfit && (
-            <>
-              {/* Confetti burst from center */}
-              <div className="absolute inset-0 pointer-events-none">
-                {confettiPieces.map((p) => (
-                  <div
-                    key={p.id}
-                    className="absolute"
-                    style={{
-                      left: "50%",
-                      top: "45%",
-                      width: p.size,
-                      height: p.shape === "rect" ? p.size * 0.4 : p.size,
-                      borderRadius: p.shape === "circle" ? "50%" : p.shape === "star" ? "2px" : "1px",
-                      backgroundColor: p.color,
-                      animation: `confetti-fly ${1.2 + p.delay}s cubic-bezier(0.25, 0.46, 0.45, 0.94) ${p.delay}s forwards`,
-                      ["--tx" as string]: `${p.x}px`,
-                      ["--ty" as string]: `${p.y}px`,
-                      ["--tr" as string]: `${p.rot}deg`,
-                    }}
-                  />
-                ))}
-              </div>
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            borderRadius: 20,
+            padding: 2,
+            background: isProfit
+              ? "linear-gradient(160deg, rgba(0,230,118,0.5), rgba(255,212,0,0.3), rgba(0,230,118,0.12), rgba(255,212,0,0.4))"
+              : "linear-gradient(160deg, rgba(255,23,68,0.5), rgba(255,109,0,0.3), rgba(255,23,68,0.12), rgba(255,109,0,0.4))",
+            mask: "linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)",
+            maskComposite: "exclude",
+            WebkitMask: "linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)",
+            WebkitMaskComposite: "xor",
+          }}
+        />
 
-              {/* Duck (CSS pixel art) */}
-              <div
-                className="absolute"
-                style={{
-                  left: "18%",
-                  bottom: 20,
-                  animation: "duck-bounce 0.8s ease-out 0.3s forwards",
-                  opacity: 0,
-                  transform: "translateY(40px) scale(0.8)",
-                }}
-              >
-                {/* Duck body */}
-                <div style={{
-                  width: 90, height: 70, borderRadius: "50% 50% 45% 45%",
-                  background: "linear-gradient(135deg, #FFD700, #F59E0B)",
-                  position: "relative",
-                  boxShadow: "0 4px 20px rgba(255, 215, 0, 0.3)",
-                }}>
-                  {/* Head */}
-                  <div style={{
-                    width: 50, height: 45, borderRadius: "50%",
-                    background: "linear-gradient(135deg, #FFEB3B, #FFD700)",
-                    position: "absolute", top: -25, left: 15,
-                    boxShadow: "0 2px 10px rgba(255, 215, 0, 0.2)",
-                  }}>
-                    {/* Eye */}
-                    <div style={{
-                      width: 10, height: 12, borderRadius: "50%",
-                      background: "#FF1744", position: "absolute", top: 10, right: 10,
-                      boxShadow: "inset 2px -1px 0 2px rgba(0,0,0,0.2)",
-                    }}>
-                      <div style={{
-                        width: 4, height: 4, borderRadius: "50%",
-                        background: "white", position: "absolute", top: 2, left: 2,
-                      }} />
-                    </div>
-                    {/* Beak */}
-                    <div style={{
-                      width: 0, height: 0,
-                      borderTop: "6px solid transparent",
-                      borderBottom: "6px solid transparent",
-                      borderLeft: "14px solid #FF1744",
-                      position: "absolute", top: 18, right: -12,
-                    }} />
-                  </div>
-                  {/* Wing */}
-                  <div style={{
-                    width: 30, height: 40, borderRadius: "50%",
-                    background: "rgba(245, 158, 11, 0.7)",
-                    position: "absolute", top: 10, left: -5,
-                    transform: "rotate(20deg)",
-                  }} />
-                  {/* PERP text */}
-                  <div style={{
-                    position: "absolute", bottom: 12, left: "50%", transform: "translateX(-50%)",
-                    fontSize: 11, fontWeight: 900, color: "#0D0D0D", fontFamily: "monospace",
-                    letterSpacing: 1,
-                  }}>
-                    PERP
-                  </div>
-                  {/* Feet */}
-                  <div style={{
-                    position: "absolute", bottom: -8, left: 15,
-                    width: 18, height: 8, borderRadius: "0 0 8px 8px",
-                    background: "#FF9800",
-                  }} />
-                  <div style={{
-                    position: "absolute", bottom: -8, right: 15,
-                    width: 18, height: 8, borderRadius: "0 0 8px 8px",
-                    background: "#FF9800",
-                  }} />
-                </div>
-              </div>
+        {/* ─── Holographic foil overlay ─── */}
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            borderRadius: 20,
+            background: isProfit
+              ? `radial-gradient(ellipse at 30% 20%, rgba(0,230,118,0.12) 0%, transparent 50%),
+                 radial-gradient(ellipse at 70% 80%, rgba(255,212,0,0.10) 0%, transparent 50%),
+                 radial-gradient(ellipse at 80% 20%, rgba(0,229,255,0.08) 0%, transparent 40%),
+                 radial-gradient(ellipse at 20% 80%, rgba(105,240,174,0.08) 0%, transparent 40%),
+                 radial-gradient(ellipse at 50% 50%, rgba(255,255,255,0.03) 0%, transparent 60%)`
+              : `radial-gradient(ellipse at 30% 20%, rgba(255,23,68,0.12) 0%, transparent 50%),
+                 radial-gradient(ellipse at 70% 80%, rgba(255,109,0,0.10) 0%, transparent 50%),
+                 radial-gradient(ellipse at 80% 20%, rgba(255,82,82,0.08) 0%, transparent 40%),
+                 radial-gradient(ellipse at 20% 80%, rgba(213,0,0,0.08) 0%, transparent 40%),
+                 radial-gradient(ellipse at 50% 50%, rgba(255,255,255,0.03) 0%, transparent 60%)`,
+            backgroundSize: "200% 200%",
+            animation: "holo-foil 8s ease-in-out infinite",
+            mixBlendMode: "screen",
+          }}
+        />
 
-              {/* Cake slice */}
-              <div
-                className="absolute"
-                style={{
-                  right: "18%",
-                  bottom: 20,
-                  animation: "cake-pop 0.6s cubic-bezier(0.68, -0.55, 0.27, 1.55) 0.8s forwards",
-                  opacity: 0,
-                  transform: "scale(0)",
-                }}
-              >
-                <div style={{ position: "relative", width: 70, height: 80 }}>
-                  {/* Cake triangle */}
-                  <div style={{
-                    width: 0, height: 0,
-                    borderLeft: "35px solid transparent",
-                    borderRight: "35px solid transparent",
-                    borderBottom: "65px solid #F59E0B",
-                    filter: "drop-shadow(0 4px 12px rgba(245, 158, 11, 0.3))",
-                  }} />
-                  {/* Frosting */}
-                  <div style={{
-                    position: "absolute", top: 18, left: 12,
-                    width: 46, height: 52,
-                    clipPath: "polygon(50% 0%, 0% 100%, 100% 100%)",
-                    background: "linear-gradient(180deg, #FFEB3B, #FFD700)",
-                  }} />
-                  {/* Cherry */}
-                  <div style={{
-                    position: "absolute", top: -10, left: "50%", transform: "translateX(-50%)",
-                    width: 14, height: 14, borderRadius: "50%",
-                    background: "radial-gradient(circle at 35% 35%, #FF5252, #FF1744)",
-                    boxShadow: "0 2px 8px rgba(255, 23, 68, 0.4)",
-                  }} />
-                  {/* Sprinkles */}
-                  {[
-                    { x: 20, y: 40, r: 30, c: "#FF1744" },
-                    { x: 42, y: 50, r: -20, c: "#2196F3" },
-                    { x: 30, y: 58, r: 45, c: "#4CAF50" },
-                  ].map((s, i) => (
-                    <div key={i} style={{
-                      position: "absolute", left: s.x, top: s.y,
-                      width: 6, height: 3, borderRadius: 2,
-                      background: s.c, transform: `rotate(${s.r}deg)`,
-                    }} />
-                  ))}
-                </div>
-              </div>
+        {/* ─── Top-left corner shine ─── */}
+        <div
+          className="absolute pointer-events-none"
+          style={{
+            top: 0,
+            left: 0,
+            width: 200,
+            height: 200,
+            borderRadius: "0 0 100% 0",
+            background: `radial-gradient(ellipse at 0% 0%, rgba(255, 255, 255, 0.06) 0%, transparent 70%)`,
+          }}
+        />
 
-              {/* Pellet trail */}
-              <div className="absolute bottom-4 left-0 right-0 flex justify-center gap-3">
-                {[0, 1, 2, 3, 4, 5, 6].map((i) => (
-                  <div
-                    key={i}
-                    style={{
-                      width: i % 4 === 0 ? 10 : 6,
-                      height: i % 4 === 0 ? 10 : 6,
-                      borderRadius: "50%",
-                      background: "#FFD700",
-                      opacity: 0.4,
-                      animation: `pellet-pulse 0.6s ease-in-out ${i * 0.1}s infinite`,
-                    }}
-                  />
-                ))}
-              </div>
-            </>
-          )}
+        {/* ─── Bottom-right edge glow ─── */}
+        <div
+          className="absolute pointer-events-none"
+          style={{
+            bottom: 0,
+            right: 0,
+            width: 250,
+            height: 250,
+            borderRadius: "100% 0 0 0",
+            background: `radial-gradient(ellipse at 100% 100%, rgba(${glow}, 0.06) 0%, transparent 70%)`,
+          }}
+        />
 
-          {/* ─── LOSS: Pac-Man Chomping Dots ────────── */}
-          {!isProfit && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center px-8">
-              {/* Pac-Man eating zone */}
-              <div className="relative w-full" style={{ height: 80 }}>
-                {/* Dot row */}
-                <div className="absolute inset-0 flex items-center justify-center gap-2">
-                  {Array.from({ length: dotCount }).map((_, i) => {
-                    const eaten = i < pacPhase * dotCount;
-                    const isPowerPellet = i % 5 === 0;
-                    return (
-                      <div
-                        key={i}
-                        style={{
-                          width: isPowerPellet ? 16 : 8,
-                          height: isPowerPellet ? 16 : 8,
-                          borderRadius: "50%",
-                          background: eaten ? "transparent" : "#FFD700",
-                          boxShadow: eaten ? "none" : `0 0 ${isPowerPellet ? 8 : 4}px rgba(255, 215, 0, ${isPowerPellet ? 0.6 : 0.3})`,
-                          transition: "all 0.15s ease-out",
-                          transform: eaten ? "scale(0)" : "scale(1)",
-                        }}
-                      />
-                    );
-                  })}
-                </div>
+        {/* Floating particles */}
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          {particles.map((p, i) => (
+            <div
+              key={i}
+              className="absolute rounded-full animate-pnl-float-up"
+              style={{
+                left: `${p.x}%`,
+                top: `${p.y}%`,
+                width: p.size,
+                height: p.size,
+                backgroundColor: p.color,
+                opacity: 0.5,
+                animationDelay: `${p.delay}s`,
+                animationDuration: `${p.dur}s`,
+              }}
+            />
+          ))}
+        </div>
 
-                {/* Pac-Man ball (pure CSS) */}
-                <div
-                  style={{
-                    position: "absolute",
-                    top: "50%",
-                    left: `${Math.max(5, pacPhase * 85)}%`,
-                    transform: "translate(-50%, -50%)",
-                    transition: "left 0.1s linear",
-                  }}
-                >
-                  <div
-                    style={{
-                      width: 48,
-                      height: 48,
-                      borderRadius: "50%",
-                      background: "radial-gradient(circle at 40% 35%, #FFEB3B, #FFD700, #F59E0B)",
-                      position: "relative",
-                      animation: "pac-chomp 0.3s ease-in-out infinite",
-                      boxShadow: "0 0 20px rgba(255, 215, 0, 0.4)",
-                    }}
-                  >
-                    {/* Eye */}
-                    <div style={{
-                      position: "absolute", top: 8, left: 22,
-                      width: 8, height: 10, borderRadius: "50%",
-                      background: "#FF1744",
-                    }}>
-                      <div style={{
-                        width: 3, height: 3, borderRadius: "50%",
-                        background: "white", position: "absolute", top: 2, left: 2,
-                      }} />
-                    </div>
-                  </div>
-                </div>
-              </div>
+        {/* Radial glow behind score */}
+        <div
+          className="absolute pointer-events-none"
+          style={{
+            top: "22%",
+            left: "50%",
+            transform: "translate(-50%, -20%)",
+            width: 400,
+            height: 400,
+            borderRadius: "50%",
+            background: `radial-gradient(circle, rgba(${glow}, 0.15) 0%, rgba(${glow}, 0.06) 35%, transparent 65%)`,
+            animation: "pellet-pulse 3s ease-in-out infinite",
+          }}
+        />
 
-              {/* Ghost appears */}
-              <div
-                style={{
-                  marginTop: 16,
-                  opacity: showGhost ? 1 : 0,
-                  transform: showGhost ? "translateY(0) scale(1)" : "translateY(20px) scale(0.6)",
-                  transition: "all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1)",
-                }}
-              >
-                {/* CSS Ghost */}
-                <div style={{ position: "relative", width: 44, height: 52 }}>
-                  <div style={{
-                    width: 44, height: 38, borderRadius: "22px 22px 0 0",
-                    background: "linear-gradient(180deg, #FF1744, #D50000)",
-                    boxShadow: "0 0 20px rgba(255, 23, 68, 0.4)",
-                  }} />
-                  {/* Ghost bottom zigzag */}
-                  <div style={{
-                    display: "flex", marginTop: -1,
-                  }}>
-                    {[0, 1, 2, 3].map((i) => (
-                      <div key={i} style={{
-                        width: 11, height: 14,
-                        background: i % 2 === 0 ? "linear-gradient(180deg, #FF1744, #D50000)" : "transparent",
-                        borderRadius: i % 2 === 0 ? "0 0 50% 50%" : 0,
-                      }} />
-                    ))}
-                  </div>
-                  {/* Ghost eyes */}
-                  <div style={{ position: "absolute", top: 12, left: 6, display: "flex", gap: 6 }}>
-                    {[0, 1].map((i) => (
-                      <div key={i} style={{
-                        width: 12, height: 14, borderRadius: "50%", background: "white",
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                      }}>
-                        <div style={{ width: 7, height: 8, borderRadius: "50%", background: "#2196F3" }} />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
+        {/* Header */}
+        <div className="relative px-6 pt-5 pb-2 flex items-center justify-between">
+          <span
+            className="text-sm font-bold tracking-widest uppercase"
+            style={{ color: "#bbb" }}
+          >
+            Position Closed
+          </span>
+          <button
+            onClick={onClose}
+            className="hover:text-white transition-colors text-xl leading-none"
+            style={{ color: "#999", padding: "4px" }}
+          >
+            ✕
+          </button>
+        </div>
 
-          {/* Flavor text overlay */}
+        {/* ═══════ SCORE ZONE ═══════ */}
+        <div className="relative px-6 pt-4 pb-6 text-center">
+          {/* Asset + direction */}
+          <div className="flex items-center justify-center gap-2.5 mb-6">
+            <span
+              className="text-sm font-bold px-2.5 py-1 rounded"
+              style={{
+                color: isLong ? "#FFD400" : "#FF1744",
+                background: isLong ? "rgba(255, 212, 0, 0.15)" : "rgba(255, 23, 68, 0.15)",
+                border: `1px solid ${isLong ? "rgba(255, 212, 0, 0.3)" : "rgba(255, 23, 68, 0.3)"}`,
+                boxShadow: `0 0 12px ${isLong ? "rgba(255, 212, 0, 0.15)" : "rgba(255, 23, 68, 0.15)"}`,
+              }}
+            >
+              {isLong ? "LONG" : "SHORT"}
+            </span>
+            <span className="text-white font-semibold text-xl">{asset}</span>
+            <span className="text-base" style={{ color: "#bbb" }}>{leverage.toFixed(0)}x</span>
+          </div>
+
+          {/* Big PnL % */}
           <div
-            className="absolute bottom-0 left-0 right-0 text-center pb-3"
             style={{
-              animation: "text-fade-in 0.5s ease-out 0.5s forwards",
+              fontSize: 68,
+              fontWeight: 900,
+              lineHeight: 1,
+              letterSpacing: "-2px",
+              background: isProfit
+                ? "linear-gradient(135deg, #00E676 0%, #69F0AE 30%, #FFFFFF 50%, #FFD400 70%, #00E676 100%)"
+                : "linear-gradient(135deg, #FF1744 0%, #FF5252 30%, #FFFFFF 50%, #FF8A80 70%, #FF1744 100%)",
+              backgroundSize: "200% 200%",
+              animation: "holo-foil 6s ease-in-out infinite, score-pop 0.5s cubic-bezier(0.68, -0.55, 0.27, 1.55) 0.15s forwards",
+              WebkitBackgroundClip: "text",
+              WebkitTextFillColor: "transparent",
+              backgroundClip: "text",
+              filter: `drop-shadow(0 0 40px rgba(${glow}, 0.5)) drop-shadow(0 0 80px rgba(${glow}, 0.2))`,
+              opacity: 0,
+              transform: "scale(0)",
+            }}
+          >
+            {isProfit ? "+" : ""}{pnlPercent.toFixed(2)}%
+          </div>
+
+          {/* PnL USD — glowing pill */}
+          <div
+            style={{
+              display: "inline-block",
+              marginTop: 14,
+              padding: "8px 24px",
+              borderRadius: 100,
+              background: accentDim,
+              border: `1px solid ${accentMid}`,
+              boxShadow: `0 0 20px rgba(${glow}, 0.15), inset 0 0 20px rgba(${glow}, 0.05)`,
+              animation: "text-fade-in 0.4s ease-out 0.4s forwards",
               opacity: 0,
             }}
           >
             <span
               style={{
-                fontSize: 16,
+                fontSize: 26,
+                fontWeight: 800,
+                fontFamily: "monospace",
+                color: accent,
+                textShadow: `0 0 20px rgba(${glow}, 0.6), 0 0 40px rgba(${glow}, 0.3)`,
+              }}
+            >
+              {isProfit ? "+$" : "-$"}{Math.abs(pnlUsd).toFixed(2)}
+            </span>
+          </div>
+
+          {/* Flavor text */}
+          <div
+            style={{
+              marginTop: 16,
+              animation: "text-fade-in 0.4s ease-out 0.55s forwards",
+              opacity: 0,
+            }}
+          >
+            <span
+              style={{
+                display: "inline-block",
+                fontSize: 18,
                 fontWeight: 700,
-                color: isProfit ? "#00E676" : "#FF5252",
-                textShadow: isProfit
-                  ? "0 0 20px rgba(0, 230, 118, 0.5)"
-                  : "0 0 20px rgba(255, 82, 82, 0.5)",
+                letterSpacing: "1px",
+                color: accent,
+                textShadow: `0 0 24px rgba(${glow}, 0.7), 0 0 48px rgba(${glow}, 0.3), 0 0 80px rgba(${glow}, 0.15)`,
               }}
             >
               {flavorText}
             </span>
           </div>
-        </div>
 
-        {/* ════════════════════════════════════════════════
-            RESULTS ZONE — Compact below animations
-            ════════════════════════════════════════════════ */}
-        <div
-          style={{
-            background: "rgba(0, 0, 0, 0.4)",
-            borderTop: `1px solid ${isProfit ? "rgba(0, 230, 118, 0.1)" : "rgba(255, 23, 68, 0.1)"}`,
-            padding: "20px 24px 16px",
-          }}
-        >
-          {/* Asset + Direction badge */}
-          <div className="flex items-center justify-center gap-2 mb-2">
-            <span
-              style={{
-                fontSize: 11, fontWeight: 800, padding: "2px 8px", borderRadius: 4,
-                color: isLong ? "#FFD700" : "#FF1744",
-                background: isLong ? "rgba(255, 215, 0, 0.12)" : "rgba(255, 23, 68, 0.12)",
-              }}
-            >
-              {isLong ? "LONG" : "SHORT"}
-            </span>
-            <span style={{ color: "white", fontWeight: 600, fontSize: 15 }}>{asset}</span>
-            <span style={{ color: "#888", fontSize: 12 }}>{leverage.toFixed(0)}x</span>
-          </div>
-
-          <div className="text-center mb-6" style={{ animation: "score-pop 0.5s cubic-bezier(0.68, -0.55, 0.27, 1.55) 0.2s forwards", opacity: 0, transform: "scale(0)" }}>
-            <div style={{
-              fontSize: 48, fontWeight: 900, lineHeight: 1,
-              background: isProfit
-                ? "linear-gradient(135deg, #00E676, #69F0AE)"
-                : "linear-gradient(135deg, #FF1744, #FF5252, #FF8A80)",
-              WebkitBackgroundClip: "text",
-              WebkitTextFillColor: "transparent",
-              backgroundClip: "text",
-            }}>
-              {isProfit ? "+" : ""}{pnlPercent.toFixed(2)}%
-            </div>
-            <div style={{
-              fontSize: 20, fontWeight: 700, marginTop: 4,
-              color: isProfit ? "#00E676" : "#FF1744",
-            }}>
-              {isProfit ? "+$" : "-$"}{Math.abs(pnlUsd).toFixed(2)}
-            </div>
-            {/* Share on Twitter - integrated right beneath result */}
-            <div className="mt-4 flex justify-center">
-              <a
-                href={buildTweetUrl({ pnlUsd, pnlPercent, asset, isLong, leverage, isProfit })}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-2 px-4 py-2 rounded-full transition-all hover:scale-105"
-                style={{
-                  background: "var(--coal-lighter)",
-                  border: "1px solid rgba(255, 255, 255, 0.1)",
-                  color: "var(--soft-white)",
-                  fontSize: 12,
-                  fontWeight: 600,
-                  boxShadow: "0 0 10px rgba(255, 138, 0, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.05)",
-                }}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
-                </svg>
-                Share
-              </a>
-            </div>
-          </div>
-
-          {/* Stats row */}
+          {/* Share button */}
           <div
-            className="grid grid-cols-4 gap-2 mt-4 text-center"
+            className="mt-5 flex justify-center"
             style={{
-              background: "rgba(0, 0, 0, 0.3)",
-              borderRadius: 10, padding: "10px 8px",
-              border: "1px solid rgba(255, 255, 255, 0.04)",
+              animation: "text-fade-in 0.4s ease-out 0.65s forwards",
+              opacity: 0,
             }}
           >
-            {[
-              { label: "Collateral", value: `$${collateral.toFixed(0)}` },
-              { label: "Size", value: `$${sizeUsd.toFixed(0)}` },
-              { label: "Leverage", value: `${leverage.toFixed(0)}x` },
-              { label: "Entry", value: `$${entryPrice.toFixed(2)}` },
-            ].map((s) => (
-              <div key={s.label}>
-                <div style={{ fontSize: 10, color: "#666" }}>{s.label}</div>
-                <div style={{ fontSize: 13, color: "white", fontFamily: "monospace", fontWeight: 600, marginTop: 2 }}>{s.value}</div>
-              </div>
-            ))}
-          </div>
-
-          {/* Action buttons */}
-          <div className="mt-4 flex justify-end">
-            {/* Close button */}
             <button
-              onClick={onClose}
-              className="px-6 py-2 rounded-lg transition-all hover:bg-white/10"
+              onClick={handleShare}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-full transition-all hover:scale-105 cursor-pointer"
               style={{
-                background: "rgba(255, 255, 255, 0.06)",
-                color: "#999",
+                background: "rgba(255, 255, 255, 0.08)",
+                border: `1px solid rgba(${glow}, 0.2)`,
+                color: "#fff",
+                fontSize: 14,
                 fontWeight: 600,
-                fontSize: 13,
-                border: "1px solid rgba(255, 255, 255, 0.08)",
+                boxShadow: `0 0 16px rgba(${glow}, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.08)`,
               }}
             >
-              Close
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+              </svg>
+              Share
             </button>
           </div>
         </div>
 
+        {/* ═══════ STATS ZONE ═══════ */}
+        <div
+          className="relative mx-5 mb-5 grid grid-cols-4 gap-0 overflow-hidden"
+          style={{
+            borderRadius: 14,
+            border: `1px solid ${accentMid}`,
+            background: "rgba(0, 0, 0, 0.35)",
+            boxShadow: `inset 0 0 30px rgba(${glow}, 0.04), 0 0 20px rgba(${glow}, 0.06)`,
+          }}
+        >
+          {stats.map((s, i) => (
+            <div
+              key={s.label}
+              className="text-center py-4 px-2"
+              style={{
+                borderRight: i < 3 ? `1px solid rgba(${glow}, 0.12)` : "none",
+                background: `linear-gradient(180deg, rgba(${glow}, 0.06) 0%, transparent 100%)`,
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 11,
+                  fontWeight: 700,
+                  letterSpacing: "1.5px",
+                  color: accent,
+                  marginBottom: 8,
+                  textShadow: `0 0 8px rgba(${glow}, 0.3)`,
+                }}
+              >
+                {s.label}
+              </div>
+              <div
+                style={{
+                  fontSize: 18,
+                  color: "#fff",
+                  fontFamily: "monospace",
+                  fontWeight: 800,
+                  textShadow: `0 0 12px rgba(${glow}, 0.3)`,
+                }}
+              >
+                {s.value}
+              </div>
+            </div>
+          ))}
+        </div>
+
         {/* Footer */}
         <div
-          className="flex items-center justify-between px-5 py-2"
-          style={{ borderTop: "1px solid rgba(255, 255, 255, 0.04)" }}
+          className="relative flex items-center justify-between px-6 py-3"
+          style={{ borderTop: `1px solid rgba(${glow}, 0.1)` }}
         >
-          <span style={{ fontSize: 10, fontFamily: "monospace", color: isProfit ? "#F59E0B" : "#FF5252" }}>
-            pErp-man
-          </span>
+          <div className="flex items-center gap-2">
+            <PacManLogo size={20} />
+            <span style={{ fontSize: 12, fontFamily: "monospace", fontWeight: 700, color: isProfit ? "#F59E0B" : "#FF5252" }}>
+              pErp-man
+            </span>
+          </div>
           <div className="flex items-center gap-1.5">
             {[0, 1, 2, 3].map((i) => (
               <div key={i} style={{
-                width: 3, height: 3, borderRadius: "50%",
+                width: 4, height: 4, borderRadius: "50%",
                 background: isProfit ? "#FFD700" : "#FF1744",
-                opacity: 0.2 + i * 0.2,
+                opacity: 0.3 + i * 0.2,
+                boxShadow: `0 0 4px ${isProfit ? "rgba(255, 215, 0, 0.4)" : "rgba(255, 23, 68, 0.4)"}`,
               }} />
             ))}
-            <span style={{ fontSize: 10, color: "#444", marginLeft: 4 }}>
+            <span style={{ fontSize: 11, color: "#999", marginLeft: 4 }}>
               {new Date().toLocaleDateString()}
             </span>
           </div>
