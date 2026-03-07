@@ -6,7 +6,7 @@ import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.s
 import {Pool} from "../../src/core/Pool.sol";
 import {Custody} from "../../src/core/Custody.sol";
 import {MockUSDC} from "../../src/tokens/MockUSDC.sol";
-import {CLP} from "../../src/tokens/CLP.sol";
+import {PMLP} from "../../src/tokens/PMLP.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import {Vm} from "forge-std/Vm.sol";
@@ -16,7 +16,7 @@ contract PoolHandler {
     Pool public pool;
     Custody public custody;
     MockUSDC public usdc;
-    CLP public clp;
+    PMLP public pmlp;
     address[] public actors;
 
     uint256 public totalDeposited;
@@ -26,13 +26,13 @@ contract PoolHandler {
         Pool pool_,
         Custody custody_,
         MockUSDC usdc_,
-        CLP clp_,
+        PMLP pmlp_,
         address[] memory actors_
     ) {
         pool = pool_;
         custody = custody_;
         usdc = usdc_;
-        clp = clp_;
+        pmlp = pmlp_;
         actors = actors_;
     }
 
@@ -51,16 +51,16 @@ contract PoolHandler {
         vm.stopPrank();
     }
 
-    function withdraw(uint256 actorIdx, uint256 clpAmount) external {
+    function withdraw(uint256 actorIdx, uint256 pmlpAmount) external {
         actorIdx = bound(actorIdx, 0, actors.length - 1);
         address actor = actors[actorIdx];
 
-        uint256 maxClp = clp.balanceOf(actor);
-        if (maxClp == 0) return;
-        clpAmount = bound(clpAmount, 1, maxClp);
+        uint256 maxPmlp = pmlp.balanceOf(actor);
+        if (maxPmlp == 0) return;
+        pmlpAmount = bound(pmlpAmount, 1, maxPmlp);
 
         vm.startPrank(actor);
-        try pool.withdraw(clpAmount) {
+        try pool.withdraw(pmlpAmount) {
             // Track approximate withdrawal
         } catch {}
         vm.stopPrank();
@@ -90,9 +90,9 @@ contract PoolInvariantTest is TestSetup {
         Pool poolImpl = new Pool();
         pool = Pool(address(new ERC1967Proxy(
             address(poolImpl),
-            abi.encodeCall(Pool.initialize, (admin, address(usdc), address(clp), admin, 9000))
+            abi.encodeCall(Pool.initialize, (admin, address(usdc), address(pmlp), admin, 9000))
         )));
-        clp.transferOwnership(address(pool));
+        pmlp.transferOwnership(address(pool));
 
         // Deploy 2 custodies
         Custody custImpl = new Custody();
@@ -117,7 +117,7 @@ contract PoolInvariantTest is TestSetup {
         actors[1] = user2;
         actors[2] = user3;
 
-        handler = new PoolHandler(pool, goldCustody, usdc, clp, actors);
+        handler = new PoolHandler(pool, goldCustody, usdc, pmlp, actors);
         targetContract(address(handler));
     }
 
@@ -132,13 +132,13 @@ contract PoolInvariantTest is TestSetup {
         assertEq(total, 3_000_000e18, "USDC total not conserved");
     }
 
-    /// @notice CLP supply correlates with pool deposits: if CLP > 0, pool USDC > 0
-    function invariant_clpSupplyMatchesPool() public view {
-        if (clp.totalSupply() > 0) {
-            assertGt(pool.totalPoolUSDC(), 0, "CLP exists but pool empty");
+    /// @notice PMLP supply correlates with pool deposits: if PMLP > 0, pool USDC > 0
+    function invariant_pmlpSupplyMatchesPool() public view {
+        if (pmlp.totalSupply() > 0) {
+            assertGt(pool.totalPoolUSDC(), 0, "PMLP exists but pool empty");
         }
         if (pool.totalPoolUSDC() == 0) {
-            assertEq(clp.totalSupply(), 0, "Pool empty but CLP exists");
+            assertEq(pmlp.totalSupply(), 0, "Pool empty but PMLP exists");
         }
     }
 

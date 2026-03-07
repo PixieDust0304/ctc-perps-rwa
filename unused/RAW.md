@@ -9,7 +9,7 @@
 - **Block Explorer**: https://creditcoin.blockscout.com
 - **Block Time**: 15 seconds (mainnet), 2 seconds (Anvil)
 - **Target**: Localnet (Anvil) only for v1. No mainnet/devnet.
-- **All tokens are MOCK** (MockUSDC, CLP, CPERP)
+- **All tokens are MOCK** (MockUSDC, PMLP, PRPMAN)
 
 ## Oracle: Autonom
 
@@ -53,8 +53,8 @@
 - **Pool vs Traders** during market hours
 - **P2P (trader vs trader)** during off-hours
 - **Collateral**: USDC only (mock ERC-20, 18 decimals)
-- **LP token**: CLP (linear scaling with total pool USDC)
-- **Governance token**: CPERP (admin owns 100% initially)
+- **LP token**: PMLP (linear scaling with total pool USDC)
+- **Governance token**: PRPMAN (admin owns 100% initially)
 
 ## Trading Parameters (Market Hours)
 
@@ -100,7 +100,7 @@
 - Utilization capped at 100% (rate never exceeds maxBaseFee)
 - Both sides ALWAYS pay (cost of borrowing from pool)
 - Per-15s rate = hourly_rate / 240
-- 90% to CLP holders (LPs), 10% to protocol
+- 90% to PMLP holders (LPs), 10% to protocol
 
 ### Funding Rate Formula
 - Imbalance-based: majority side pays minority side
@@ -159,7 +159,7 @@
 ## LP Withdrawal Waterfall
 
 - Proportional withdrawal across all custodies
-- If withdrawing 20% of CLP from pool with available [5, 15, 45, 95]:
+- If withdrawing 20% of PMLP from pool with available [5, 15, 45, 95]:
   1. Try 20 from each custody (80 total / 4 = 20 each)
   2. Custody 1 has 5: drain it completely, shortfall = 15
   3. Custody 2 has 15: drain it completely, shortfall = 5
@@ -171,7 +171,7 @@
 
 ## DAO Governance
 
-- **Token**: CPERP (ERC-20, 100% to admin initially)
+- **Token**: PRPMAN (ERC-20, 100% to admin initially)
 - **Quorum**: 20% of total supply
 - **Majority**: 51%
 - **Voting period**: 48 hours
@@ -183,8 +183,8 @@
 | Token | Type | Purpose |
 |-------|------|---------|
 | MockUSDC | ERC-20, 18 decimals | Collateral for all trading |
-| CLP | ERC-20, UUPS upgradeable | LP receipt, linear with pool USDC, tradeable |
-| CPERP | ERC-20 | Governance, tradeable, DAO voting power |
+| PMLP | ERC-20, UUPS upgradeable | LP receipt, linear with pool USDC, tradeable |
+| PRPMAN | ERC-20 | Governance, tradeable, DAO voting power |
 
 ## Tech Stack
 
@@ -223,9 +223,9 @@
 - If all traders win, pool can't pay everyone
 - **RESOLUTION**: Payout capped at min(sizeUsd, custody_available_balance). First to close gets paid. Consider ADL for v2.
 
-### Issue 6: CLP Value + Custody Isolation
-- CLP scales with total pool USDC, but custodies are isolated
-- If Gold custody gets drained, CLP value drops
+### Issue 6: PMLP Value + Custody Isolation
+- PMLP scales with total pool USDC, but custodies are isolated
+- If Gold custody gets drained, PMLP value drops
 - **RESOLUTION**: Intentional - LPs accept aggregate risk. Custodies isolated for TRADER risk management.
 
 ### Issue 7: Trader Collateral Inflating LP Metrics

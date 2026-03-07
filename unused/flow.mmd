@@ -45,8 +45,8 @@ graph TB
         P2PTRADING["P2PTrading.sol<br/>off-hours escrow<br/>VAMM pricing<br/>10s min open time"]
         VAMM["VAMM.sol<br/>x·y=k virtual AMM<br/>depth multiplier"]
         FEEMANAGER["FeeManager.sol<br/>0.1% open/close fee<br/>5 bps/hr base + funding<br/>LP/protocol 90/10 split"]
-        POOL["Pool.sol<br/>LP accounting<br/>CLP mint/burn<br/>checks-effects-interactions"]
-        GOVERNANCE["Governance.sol<br/>CPERP voting<br/>48h · 20% quorum"]
+        POOL["Pool.sol<br/>LP accounting<br/>PMLP mint/burn<br/>checks-effects-interactions"]
+        GOVERNANCE["Governance.sol<br/>PRPMAN voting<br/>48h · 20% quorum"]
 
         subgraph CUSTODIES["Custodies · All USDC Lives Here"]
             CUSTODY_GOLD["Gold Custody<br/>feed 2056<br/>totalTraderCollateral tracked"]
@@ -57,8 +57,8 @@ graph TB
 
         subgraph TOKENS["Tokens"]
             USDC["MockUSDC<br/>18 decimals"]
-            CLP["CLP<br/>LP receipt"]
-            CPERP["CPERP<br/>governance"]
+            PMLP["PMLP<br/>LP receipt"]
+            PRPMAN["PRPMAN<br/>governance"]
         end
     end
 
@@ -138,7 +138,7 @@ graph TB
     POOL -->|"addLiquidity /<br/>removeLiquidity"| CUSTODY_SILVER
     POOL -->|"addLiquidity /<br/>removeLiquidity"| CUSTODY_OIL
     POOL -->|"addLiquidity /<br/>removeLiquidity"| CUSTODY_PLAT
-    POOL -->|"mint / burn"| CLP
+    POOL -->|"mint / burn"| PMLP
 
     GOVERNANCE -.->|"admin calls"| TRADING
     GOVERNANCE -.->|"admin calls"| POOL
@@ -160,5 +160,5 @@ graph TB
     class TRADEPAGE,POOLPAGE,GOVPAGE,CHART frontend
     class ORACLE_SOL,MARKETSTATE,TRADING,P2PTRADING,VAMM,FEEMANAGER,POOL,GOVERNANCE contract
     class CUSTODY_GOLD,CUSTODY_SILVER,CUSTODY_OIL,CUSTODY_PLAT custody
-    class USDC,CLP,CPERP token
+    class USDC,PMLP,PRPMAN token
     class DB_TICKS,DB_CANDLES,DB_POSITIONS,DB_MARKET,DB_KEEPER database

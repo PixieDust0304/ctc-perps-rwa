@@ -27,12 +27,12 @@ contract PoolCustodyTest is TestSetup {
         Pool poolImpl = new Pool();
         bytes memory poolInit = abi.encodeCall(
             Pool.initialize,
-            (admin, address(usdc), address(clp), admin, 9000)
+            (admin, address(usdc), address(pmlp), admin, 9000)
         );
         pool = Pool(address(new ERC1967Proxy(address(poolImpl), poolInit)));
 
-        // Transfer CLP ownership to Pool (so Pool can mint/burn)
-        clp.transferOwnership(address(pool));
+        // Transfer PMLP ownership to Pool (so Pool can mint/burn)
+        pmlp.transferOwnership(address(pool));
 
         // Deploy 4 Custodies
         goldCustody = _deployCustody(GOLD_FEED);
@@ -84,8 +84,8 @@ contract PoolCustodyTest is TestSetup {
         pool.deposit(10000e18);
         vm.stopPrank();
 
-        // 1:1 CLP for first deposit
-        assertEq(clp.balanceOf(user1), 10000e18);
+        // 1:1 PMLP for first deposit
+        assertEq(pmlp.balanceOf(user1), 10000e18);
         assertEq(pool.totalPoolUSDC(), 10000e18);
 
         // Each custody gets 25%
@@ -102,13 +102,13 @@ contract PoolCustodyTest is TestSetup {
         pool.deposit(10000e18);
         vm.stopPrank();
 
-        // Second deposit: same amount should get same CLP
+        // Second deposit: same amount should get same PMLP
         vm.startPrank(user2);
         usdc.approve(address(pool), 10000e18);
         pool.deposit(10000e18);
         vm.stopPrank();
 
-        assertEq(clp.balanceOf(user2), 10000e18);
+        assertEq(pmlp.balanceOf(user2), 10000e18);
         assertEq(pool.totalPoolUSDC(), 20000e18);
     }
 
@@ -126,7 +126,7 @@ contract PoolCustodyTest is TestSetup {
 
         uint256 balAfter = usdc.balanceOf(user1);
         assertEq(balAfter - balBefore, 10000e18);
-        assertEq(clp.balanceOf(user1), 0);
+        assertEq(pmlp.balanceOf(user1), 0);
         assertEq(pool.totalPoolUSDC(), 0);
     }
 
@@ -139,7 +139,7 @@ contract PoolCustodyTest is TestSetup {
         pool.withdraw(5000e18);
         vm.stopPrank();
 
-        assertEq(clp.balanceOf(user1), 5000e18);
+        assertEq(pmlp.balanceOf(user1), 5000e18);
         assertEq(pool.totalPoolUSDC(), 5000e18);
     }
 

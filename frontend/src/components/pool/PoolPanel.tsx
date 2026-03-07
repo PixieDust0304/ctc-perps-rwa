@@ -9,7 +9,7 @@ import { parseEther, formatEther, type Address } from "viem";
 import { CONTRACTS, POOL_ABI, ERC20_ABI } from "../../lib/contracts";
 import { useContractWrite } from "../../hooks/useContractWrite";
 
-const CLP_ABI = [
+const PMLP_ABI = [
   {
     name: "totalSupply",
     type: "function",
@@ -51,27 +51,27 @@ export function PoolPanel() {
     query: { enabled: !!address && !!CONTRACTS.mockUSDC, refetchInterval: 5000 },
   });
 
-  const { data: clpBalance } = useReadContract({
-    address: CONTRACTS.clp as Address,
-    abi: CLP_ABI,
+  const { data: pmlpBalance } = useReadContract({
+    address: CONTRACTS.pmlp as Address,
+    abi: PMLP_ABI,
     functionName: "balanceOf",
     args: [address!],
-    query: { enabled: !!address && !!CONTRACTS.clp, refetchInterval: 5000 },
+    query: { enabled: !!address && !!CONTRACTS.pmlp, refetchInterval: 5000 },
   });
 
-  const { data: clpTotalSupply } = useReadContract({
-    address: CONTRACTS.clp as Address,
-    abi: CLP_ABI,
+  const { data: pmlpTotalSupply } = useReadContract({
+    address: CONTRACTS.pmlp as Address,
+    abi: PMLP_ABI,
     functionName: "totalSupply",
-    query: { enabled: !!CONTRACTS.clp, refetchInterval: 5000 },
+    query: { enabled: !!CONTRACTS.pmlp, refetchInterval: 5000 },
   });
 
   const poolTvl = totalPoolUSDC ? Number(formatEther(totalPoolUSDC as bigint)) : 0;
   const userUsdc = usdcBalance ? Number(formatEther(usdcBalance as bigint)) : 0;
-  const userClp = clpBalance ? Number(formatEther(clpBalance as bigint)) : 0;
-  const totalClp = clpTotalSupply ? Number(formatEther(clpTotalSupply as bigint)) : 0;
-  const sharePercent = totalClp > 0 ? (userClp / totalClp) * 100 : 0;
-  const userPoolValue = totalClp > 0 ? (userClp / totalClp) * poolTvl : 0;
+  const userPmlp = pmlpBalance ? Number(formatEther(pmlpBalance as bigint)) : 0;
+  const totalPmlp = pmlpTotalSupply ? Number(formatEther(pmlpTotalSupply as bigint)) : 0;
+  const sharePercent = totalPmlp > 0 ? (userPmlp / totalPmlp) * 100 : 0;
+  const userPoolValue = totalPmlp > 0 ? (userPmlp / totalPmlp) * poolTvl : 0;
 
   const handleDeposit = async () => {
     if (!address || !CONTRACTS.pool || !depositAmount) return;
@@ -111,7 +111,7 @@ export function PoolPanel() {
         functionName: "withdraw",
         args: [amount],
       },
-      `Withdrawing ${withdrawAmount} CLP`
+      `Withdrawing ${withdrawAmount} PMLP`
     );
   };
 
@@ -137,15 +137,15 @@ export function PoolPanel() {
             </p>
           </div>
           <div>
-            <p className="text-xs font-pixel uppercase tracking-wider mb-1" style={{ color: "var(--muted-text)" }}>CLP Supply</p>
+            <p className="text-xs font-pixel uppercase tracking-wider mb-1" style={{ color: "var(--muted-text)" }}>PMLP Supply</p>
             <p className="text-xl font-mono font-bold" style={{ color: "var(--soft-white)" }}>
-              {totalClp.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+              {totalPmlp.toLocaleString(undefined, { maximumFractionDigits: 0 })}
             </p>
           </div>
           <div>
-            <p className="text-xs font-pixel uppercase tracking-wider mb-1" style={{ color: "var(--muted-text)" }}>Your CLP Balance</p>
+            <p className="text-xs font-pixel uppercase tracking-wider mb-1" style={{ color: "var(--muted-text)" }}>Your PMLP Balance</p>
             <p className="text-xl font-mono font-bold" style={{ color: "#A855F7" }}>
-              {userClp.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+              {userPmlp.toLocaleString(undefined, { maximumFractionDigits: 2 })}
             </p>
           </div>
           <div>
@@ -249,8 +249,8 @@ export function PoolPanel() {
           <div className="space-y-3">
             <div>
               <div className="flex justify-between text-xs font-pixel uppercase tracking-wider mb-1.5" style={{ color: "var(--dim-text)" }}>
-                <span>Amount (CLP)</span>
-                <span style={{ color: "var(--muted-text)" }}>Balance: {userClp.toFixed(2)}</span>
+                <span>Amount (PMLP)</span>
+                <span style={{ color: "var(--muted-text)" }}>Balance: {userPmlp.toFixed(2)}</span>
               </div>
               <input
                 type="number"

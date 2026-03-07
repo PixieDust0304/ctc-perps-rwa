@@ -151,9 +151,9 @@ contract TradingInvariantTest is TestSetup {
         Pool poolImpl = new Pool();
         pool = Pool(address(new ERC1967Proxy(
             address(poolImpl),
-            abi.encodeCall(Pool.initialize, (admin, address(usdc), address(clp), admin, 9000))
+            abi.encodeCall(Pool.initialize, (admin, address(usdc), address(pmlp), admin, 9000))
         )));
-        clp.transferOwnership(address(pool));
+        pmlp.transferOwnership(address(pool));
 
         // Deploy Gold Custody
         Custody custImpl = new Custody();
@@ -249,10 +249,10 @@ contract TradingInvariantTest is TestSetup {
         );
     }
 
-    /// @notice Pool CLP supply must be > 0 when totalPoolUSDC > 0
-    function invariant_poolClpConsistency() public view {
+    /// @notice Pool PMLP supply must be > 0 when totalPoolUSDC > 0
+    function invariant_poolPmlpConsistency() public view {
         if (pool.totalPoolUSDC() > 0) {
-            assertGt(clp.totalSupply(), 0, "CLP supply should be > 0 when pool has USDC");
+            assertGt(pmlp.totalSupply(), 0, "PMLP supply should be > 0 when pool has USDC");
         }
     }
 

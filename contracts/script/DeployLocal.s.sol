@@ -4,8 +4,8 @@ pragma solidity ^0.8.24;
 import {Script, console} from "forge-std/Script.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {MockUSDC} from "../src/tokens/MockUSDC.sol";
-import {CLP} from "../src/tokens/CLP.sol";
-import {CPERP} from "../src/tokens/CPERP.sol";
+import {PMLP} from "../src/tokens/PMLP.sol";
+import {PRPMAN} from "../src/tokens/PRPMAN.sol";
 import {Oracle} from "../src/core/Oracle.sol";
 import {Pool} from "../src/core/Pool.sol";
 import {Custody} from "../src/core/Custody.sol";
@@ -40,17 +40,17 @@ contract DeployLocal is Script {
 
         // 1. Tokens
         MockUSDC usdc = new MockUSDC();
-        CPERP cperp = new CPERP(deployer);
+        PRPMAN prpman = new PRPMAN(deployer);
 
-        CLP clpImpl = new CLP();
-        CLP clp = CLP(address(new ERC1967Proxy(
-            address(clpImpl),
-            abi.encodeCall(CLP.initialize, (deployer))
+        PMLP pmlpImpl = new PMLP();
+        PMLP pmlp = PMLP(address(new ERC1967Proxy(
+            address(pmlpImpl),
+            abi.encodeCall(PMLP.initialize, (deployer))
         )));
 
         console.log("MockUSDC:", address(usdc));
-        console.log("CLP:", address(clp));
-        console.log("CPERP:", address(cperp));
+        console.log("PMLP:", address(pmlp));
+        console.log("PRPMAN:", address(prpman));
 
         // 2. Oracle
         uint16[] memory feedIds = new uint16[](4);
@@ -67,9 +67,9 @@ contract DeployLocal is Script {
         Pool poolImpl = new Pool();
         Pool pool = Pool(address(new ERC1967Proxy(
             address(poolImpl),
-            abi.encodeCall(Pool.initialize, (deployer, address(usdc), address(clp), deployer, 9000))
+            abi.encodeCall(Pool.initialize, (deployer, address(usdc), address(pmlp), deployer, 9000))
         )));
-        clp.transferOwnership(address(pool));
+        pmlp.transferOwnership(address(pool));
         console.log("Pool:", address(pool));
 
         // 4. FeeManager
@@ -171,7 +171,7 @@ contract DeployLocal is Script {
         Governance govImpl = new Governance();
         Governance governance = Governance(address(new ERC1967Proxy(
             address(govImpl),
-            abi.encodeCall(Governance.initialize, (deployer, address(cperp), 2000, 5100, 48 hours))
+            abi.encodeCall(Governance.initialize, (deployer, address(prpman), 2000, 5100, 48 hours))
         )));
         console.log("Governance:", address(governance));
 

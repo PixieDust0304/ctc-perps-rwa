@@ -4,14 +4,14 @@ pragma solidity ^0.8.24;
 import {Test, console2} from "forge-std/Test.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {MockUSDC} from "../../src/tokens/MockUSDC.sol";
-import {CLP} from "../../src/tokens/CLP.sol";
-import {CPERP} from "../../src/tokens/CPERP.sol";
+import {PMLP} from "../../src/tokens/PMLP.sol";
+import {PRPMAN} from "../../src/tokens/PRPMAN.sol";
 import {Oracle} from "../../src/core/Oracle.sol";
 
 abstract contract TestSetup is Test {
     MockUSDC public usdc;
-    CLP public clp;
-    CPERP public cperp;
+    PMLP public pmlp;
+    PRPMAN public prpman;
     Oracle public oracle;
 
     address public admin = makeAddr("admin");
@@ -37,13 +37,13 @@ abstract contract TestSetup is Test {
 
         // Deploy tokens
         usdc = new MockUSDC();
-        cperp = new CPERP(admin);
+        prpman = new PRPMAN(admin);
 
-        // Deploy CLP via proxy
-        CLP clpImpl = new CLP();
-        bytes memory clpInitData = abi.encodeCall(CLP.initialize, (admin));
-        ERC1967Proxy clpProxy = new ERC1967Proxy(address(clpImpl), clpInitData);
-        clp = CLP(address(clpProxy));
+        // Deploy PMLP via proxy
+        PMLP pmlpImpl = new PMLP();
+        bytes memory pmlpInitData = abi.encodeCall(PMLP.initialize, (admin));
+        ERC1967Proxy pmlpProxy = new ERC1967Proxy(address(pmlpImpl), pmlpInitData);
+        pmlp = PMLP(address(pmlpProxy));
 
         // Deploy Oracle via proxy
         uint16[] memory feedIds = new uint16[](4);

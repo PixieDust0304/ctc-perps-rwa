@@ -27,7 +27,7 @@ pErp-man is a 5-service system: an **external price oracle**, a **TypeScript ora
 │               ↕           ↕      │             └──────────────┘
 │            FeeManager    VAMM    │
 │                                  │
-│  Tokens: MockUSDC, CLP, CPERP   │
+│  Tokens: MockUSDC, PMLP, PRPMAN   │
 │  Governance → all admin fns      │
 └──────────────────────────────────┘
                ▲
@@ -202,15 +202,15 @@ Market Open (fresh=true, debounced):
 ```
 User ──► Frontend ──► Pool.sol
                         │
-                        ├──► deposit(USDC) → mint CLP → distribute to Custodies (by allocation %)
-                        ├──► withdraw(CLP) → burn CLP → waterfall withdraw from Custodies
+                        ├──► deposit(USDC) → mint PMLP → distribute to Custodies (by allocation %)
+                        ├──► withdraw(PMLP) → burn PMLP → waterfall withdraw from Custodies
                         │         └──► WaterfallWithdraw.sol (proportional, then redistribute shortfall)
                         │
                         ├──► receiveFees(amount) → totalPoolUSDC += amount
                         └──► absorbPnL(impact) → totalPoolUSDC += impact (can be negative)
 ```
 
-- **CLP price** = totalPoolUSDC / CLP.totalSupply (increases as fees accrue, traders lose)
+- **PMLP price** = totalPoolUSDC / PMLP.totalSupply (increases as fees accrue, traders lose)
 - **All USDC lives in Custodies** — Pool.sol is accounting only
 - **4 Custodies**: Gold, Silver, CrudeOil, Platinum — each with independent OI and fee accumulators
 
@@ -259,10 +259,10 @@ Effective Collateral:
 ### 9. Governance Flow
 
 ```
-CPERP holder ──► Governance.sol
+PRPMAN holder ──► Governance.sol
                     │
                     ├──► propose(target, callData) — any admin function on any contract
-                    ├──► vote(proposalId, support) — CPERP-weighted, 48hr window
+                    ├──► vote(proposalId, support) — PRPMAN-weighted, 48hr window
                     └──► execute(proposalId) — requires 20% quorum + 51% majority
                               │
                               └──► target.call(callData) — changes any parameter:

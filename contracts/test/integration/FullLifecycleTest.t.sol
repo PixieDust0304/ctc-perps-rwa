@@ -32,9 +32,9 @@ contract FullLifecycleTest is TestSetup {
         Pool poolImpl = new Pool();
         pool = Pool(address(new ERC1967Proxy(
             address(poolImpl),
-            abi.encodeCall(Pool.initialize, (admin, address(usdc), address(clp), admin, 9000))
+            abi.encodeCall(Pool.initialize, (admin, address(usdc), address(pmlp), admin, 9000))
         )));
-        clp.transferOwnership(address(pool));
+        pmlp.transferOwnership(address(pool));
 
         Custody custImpl = new Custody();
         goldCustody = Custody(address(new ERC1967Proxy(
@@ -95,7 +95,7 @@ contract FullLifecycleTest is TestSetup {
         pool.deposit(LP_DEPOSIT);
         vm.stopPrank();
 
-        uint256 clpBalance = clp.balanceOf(user1);
+        uint256 clpBalance = pmlp.balanceOf(user1);
         assertEq(clpBalance, LP_DEPOSIT, "First deposit should be 1:1");
         assertEq(_totalSystemUSDC(), systemUsdcBefore, "USDC conservation after deposit");
 
@@ -186,7 +186,7 @@ contract FullLifecycleTest is TestSetup {
 
         // LP withdraws
         vm.startPrank(user1);
-        pool.withdraw(clp.balanceOf(user1));
+        pool.withdraw(pmlp.balanceOf(user1));
         uint256 lpFinal = usdc.balanceOf(user1);
         vm.stopPrank();
 
@@ -282,7 +282,7 @@ contract FullLifecycleTest is TestSetup {
 
         // LP withdraws
         vm.startPrank(user1);
-        pool.withdraw(clp.balanceOf(user1));
+        pool.withdraw(pmlp.balanceOf(user1));
         uint256 lpFinal = usdc.balanceOf(user1);
         vm.stopPrank();
 

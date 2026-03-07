@@ -201,8 +201,8 @@ extract_addr() {
 }
 
 USDC_ADDRESS=$(extract_addr "MockUSDC")
-CLP_ADDRESS=$(extract_addr "CLP")
-CPERP_ADDRESS=$(extract_addr "CPERP")
+PMLP_ADDRESS=$(extract_addr "PMLP")
+PRPMAN_ADDRESS=$(extract_addr "PRPMAN")
 ORACLE_CONTRACT_ADDRESS=$(extract_addr "Oracle")
 POOL_ADDRESS=$(extract_addr "Pool")
 FEE_MANAGER_ADDRESS=$(extract_addr "FeeManager")
@@ -226,8 +226,8 @@ fi
 
 log "Contracts deployed."
 echo "  MockUSDC:         $USDC_ADDRESS"
-echo "  CLP:              $CLP_ADDRESS"
-echo "  CPERP:            $CPERP_ADDRESS"
+echo "  PMLP:             $PMLP_ADDRESS"
+echo "  PRPMAN:           $PRPMAN_ADDRESS"
 echo "  Oracle:           $ORACLE_CONTRACT_ADDRESS"
 echo "  Pool:             $POOL_ADDRESS"
 echo "  FeeManager:       $FEE_MANAGER_ADDRESS"
@@ -246,8 +246,8 @@ ADDR_FILE="$ROOT_DIR/.addresses.json"
 cat > "$ADDR_FILE" << EOF
 {
   "mockUSDC": "$USDC_ADDRESS",
-  "clp": "$CLP_ADDRESS",
-  "cperp": "$CPERP_ADDRESS",
+  "pmlp": "$PMLP_ADDRESS",
+  "prpman": "$PRPMAN_ADDRESS",
   "oracle": "$ORACLE_CONTRACT_ADDRESS",
   "pool": "$POOL_ADDRESS",
   "feeManager": "$FEE_MANAGER_ADDRESS",
@@ -315,8 +315,8 @@ NEXT_PUBLIC_MARKET_STATE_ADDRESS="$MARKET_STATE_ADDRESS" \
 NEXT_PUBLIC_ORACLE_ADDRESS="$ORACLE_CONTRACT_ADDRESS" \
 NEXT_PUBLIC_VAMM_ADDRESS="$VAMM_ADDRESS" \
 NEXT_PUBLIC_GOVERNANCE_ADDRESS="$GOVERNANCE_ADDRESS" \
-NEXT_PUBLIC_CLP_ADDRESS="$CLP_ADDRESS" \
-NEXT_PUBLIC_CPERP_ADDRESS="$CPERP_ADDRESS" \
+NEXT_PUBLIC_PMLP_ADDRESS="$PMLP_ADDRESS" \
+NEXT_PUBLIC_PRPMAN_ADDRESS="$PRPMAN_ADDRESS" \
 NEXT_PUBLIC_FEE_MANAGER_ADDRESS="$FEE_MANAGER_ADDRESS" \
 NEXT_PUBLIC_CUSTODY_ADDRESSES="{\"2056\":\"$CUSTODY_GOLD\",\"2069\":\"$CUSTODY_SILVER\",\"2003\":\"$CUSTODY_CRUDE_OIL\",\"2062\":\"$CUSTODY_PLATINUM\"}" \
 NEXT_PUBLIC_WS_URL="ws://localhost:$WS_PORT" \

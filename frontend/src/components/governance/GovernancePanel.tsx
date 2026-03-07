@@ -152,13 +152,13 @@ export function GovernancePanel() {
   const [customCalldata, setCustomCalldata] = useState("");
   const [useCustom, setUseCustom] = useState(false);
 
-  // CPERP balance (voting power)
-  const { data: cperpBalance } = useReadContract({
-    address: CONTRACTS.cperp as Address,
+  // PRPMAN balance (voting power)
+  const { data: prpmanBalance } = useReadContract({
+    address: CONTRACTS.prpman as Address,
     abi: ERC20_ABI,
     functionName: "balanceOf",
     args: [address!],
-    query: { enabled: !!address && !!CONTRACTS.cperp, refetchInterval: 10000 },
+    query: { enabled: !!address && !!CONTRACTS.prpman, refetchInterval: 10000 },
   });
 
   const { data: proposalCount } = useReadContract({
@@ -275,8 +275,8 @@ export function GovernancePanel() {
   };
 
   const now = BigInt(Math.floor(Date.now() / 1000));
-  const votingPower = cperpBalance
-    ? Number(cperpBalance as bigint) / 1e18
+  const votingPower = prpmanBalance
+    ? Number(prpmanBalance as bigint) / 1e18
     : 0;
 
   return (
@@ -306,14 +306,14 @@ export function GovernancePanel() {
           )}
         </div>
         <p className="text-xs font-pixel" style={{ color: "var(--muted-text)" }}>
-          Vote on protocol changes with CPERP tokens
+          Vote on protocol changes with PRPMAN tokens
         </p>
         {isConnected && (
           <div className="mt-4 flex gap-8">
             <div>
               <p className="text-xs font-pixel uppercase tracking-wider mb-1" style={{ color: "var(--muted-text)" }}>Your Voting Power</p>
               <p className="text-lg font-mono font-bold" style={{ color: "#A855F7" }}>
-                {votingPower.toLocaleString()} <span className="text-xs" style={{ color: "var(--muted-text)" }}>CPERP</span>
+                {votingPower.toLocaleString()} <span className="text-xs" style={{ color: "var(--muted-text)" }}>PRPMAN</span>
               </p>
             </div>
             <div>

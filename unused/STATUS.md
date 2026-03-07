@@ -11,13 +11,13 @@
 - [x] FixedPointMath.sol library
 - [x] PriceUtils.sol library
 - [x] MockUSDC.sol
-- [x] CLP.sol (UUPS)
-- [x] CPERP.sol
+- [x] PMLP.sol (UUPS)
+- [x] PRPMAN.sol
 - [x] Oracle.sol (UUPS, ECDSA verification, staleness, fresh flag)
 - [x] Unit tests for Phase 1 (34 tests)
 
 ### Phase 2: Pool & Custody ✅
-- [x] Pool.sol (deposit/withdraw, CLP mint/burn)
+- [x] Pool.sol (deposit/withdraw, PMLP mint/burn)
 - [x] WaterfallWithdraw.sol library
 - [x] Custody.sol (per-commodity, 4 instances)
 - [x] FeeManager.sol (cumulative accumulators)

@@ -8,19 +8,19 @@ import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/Pau
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IPool} from "../interfaces/IPool.sol";
-import {CLP} from "../tokens/CLP.sol";
+import {PMLP} from "../tokens/PMLP.sol";
 import {Custody} from "./Custody.sol";
 import {WaterfallWithdraw} from "../libraries/WaterfallWithdraw.sol";
 import {FixedPointMath} from "../libraries/FixedPointMath.sol";
 
 /// @title Pool
-/// @notice Single liquidity pool for all commodities. Manages USDC and CLP token.
+/// @notice Single liquidity pool for all commodities. Manages USDC and PMLP token.
 contract Pool is IPool, OwnableUpgradeable, UUPSUpgradeable, ReentrancyGuard, PausableUpgradeable {
     using SafeERC20 for IERC20;
     using FixedPointMath for uint256;
 
     IERC20 public usdc;
-    CLP public clpToken;
+    PMLP public pmlpToken;
     address public protocolFeeReceiver;
 
     uint256 public totalPoolUSDC;
@@ -45,7 +45,7 @@ contract Pool is IPool, OwnableUpgradeable, UUPSUpgradeable, ReentrancyGuard, Pa
     function initialize(
         address owner_,
         address usdc_,
-        address clpToken_,
+        address pmlpToken_,
         address protocolFeeReceiver_,
         uint256 lpShareBps_
     ) external initializer {
@@ -54,25 +54,25 @@ contract Pool is IPool, OwnableUpgradeable, UUPSUpgradeable, ReentrancyGuard, Pa
 
         require(protocolFeeReceiver_ != address(0), "Pool: zero fee receiver");
         usdc = IERC20(usdc_);
-        clpToken = CLP(clpToken_);
+        pmlpToken = PMLP(pmlpToken_);
         protocolFeeReceiver = protocolFeeReceiver_;
         lpShareBps = lpShareBps_;
     }
 
-    /// @notice LP deposits USDC, receives CLP tokens
+    /// @notice LP deposits USDC, receives PMLP tokens
     function deposit(uint256 usdcAmount) external nonReentrant whenNotPaused {
         require(usdcAmount > 0, "Pool: zero amount");
 
         // Transfer USDC from user
         usdc.safeTransferFrom(msg.sender, address(this), usdcAmount);
 
-        // Calculate CLP to mint
-        uint256 clpToMint;
-        uint256 clpSupply = clpToken.totalSupply();
-        if (clpSupply == 0 || totalPoolUSDC == 0) {
-            clpToMint = usdcAmount; // 1:1 for first deposit
+        // Calculate PMLP to mint
+        uint256 pmlpToMint;
+        uint256 pmlpSupply = pmlpToken.totalSupply();
+        if (pmlpSupply == 0 || totalPoolUSDC == 0) {
+            pmlpToMint = usdcAmount; // 1:1 for first deposit
         } else {
-            clpToMint = (usdcAmount * clpSupply) / totalPoolUSDC;
+            pmlpToMint = (usdcAmount * pmlpSupply) / totalPoolUSDC;
         }
 
         totalPoolUSDC += usdcAmount;
@@ -80,19 +80,19 @@ contract Pool is IPool, OwnableUpgradeable, UUPSUpgradeable, ReentrancyGuard, Pa
         // Distribute to custodies based on allocation
         _distributeToCustomes(usdcAmount);
 
-        // Mint CLP to depositor
-        clpToken.mint(msg.sender, clpToMint);
+        // Mint PMLP to depositor
+        pmlpToken.mint(msg.sender, pmlpToMint);
 
-        emit Deposited(msg.sender, usdcAmount, clpToMint);
+        emit Deposited(msg.sender, usdcAmount, pmlpToMint);
     }
 
-    /// @notice LP burns CLP tokens, receives USDC back via waterfall withdrawal
-    function withdraw(uint256 clpAmount) external nonReentrant whenNotPaused {
-        require(clpAmount > 0, "Pool: zero amount");
-        require(clpToken.balanceOf(msg.sender) >= clpAmount, "Pool: insufficient CLP");
+    /// @notice LP burns PMLP tokens, receives USDC back via waterfall withdrawal
+    function withdraw(uint256 pmlpAmount) external nonReentrant whenNotPaused {
+        require(pmlpAmount > 0, "Pool: zero amount");
+        require(pmlpToken.balanceOf(msg.sender) >= pmlpAmount, "Pool: insufficient PMLP");
 
-        uint256 clpSupply = clpToken.totalSupply();
-        uint256 usdcToReturn = (clpAmount * totalPoolUSDC) / clpSupply;
+        uint256 pmlpSupply = pmlpToken.totalSupply();
+        uint256 usdcToReturn = (pmlpAmount * totalPoolUSDC) / pmlpSupply;
 
         require(usdcToReturn > 0, "Pool: zero return");
 
@@ -103,8 +103,8 @@ contract Pool is IPool, OwnableUpgradeable, UUPSUpgradeable, ReentrancyGuard, Pa
         // Update accounting before external calls (checks-effects-interactions)
         totalPoolUSDC -= usdcToReturn;
 
-        // Burn CLP
-        clpToken.burn(msg.sender, clpAmount);
+        // Burn PMLP
+        pmlpToken.burn(msg.sender, pmlpAmount);
 
         // Execute withdrawals from each custody
         for (uint256 i = 0; i < custodies.length; i++) {
@@ -116,7 +116,7 @@ contract Pool is IPool, OwnableUpgradeable, UUPSUpgradeable, ReentrancyGuard, Pa
         // Transfer USDC to user
         usdc.safeTransfer(msg.sender, usdcToReturn);
 
-        emit Withdrawn(msg.sender, clpAmount, usdcToReturn);
+        emit Withdrawn(msg.sender, pmlpAmount, usdcToReturn);
     }
 
     /// @notice Transfer USDC from pool to a custody (called by Trading for collateral)

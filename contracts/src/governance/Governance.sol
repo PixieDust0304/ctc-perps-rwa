@@ -7,9 +7,9 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IGovernance} from "../interfaces/IGovernance.sol";
 
 /// @title Governance
-/// @notice CPERP-weighted DAO governance: propose, vote, execute
+/// @notice PRPMAN-weighted DAO governance: propose, vote, execute
 contract Governance is IGovernance, OwnableUpgradeable, UUPSUpgradeable {
-    IERC20 public cperpToken;
+    IERC20 public prpmanToken;
 
     uint256 public quorumBps;       // e.g., 2000 = 20%
     uint256 public majorityBps;     // e.g., 5100 = 51%
@@ -28,13 +28,13 @@ contract Governance is IGovernance, OwnableUpgradeable, UUPSUpgradeable {
 
     function initialize(
         address owner_,
-        address cperpToken_,
+        address prpmanToken_,
         uint256 quorumBps_,
         uint256 majorityBps_,
         uint256 votingPeriod_
     ) external initializer {
         __Ownable_init(owner_);
-        cperpToken = IERC20(cperpToken_);
+        prpmanToken = IERC20(prpmanToken_);
         quorumBps = quorumBps_;
         majorityBps = majorityBps_;
         votingPeriod = votingPeriod_;
@@ -42,7 +42,7 @@ contract Governance is IGovernance, OwnableUpgradeable, UUPSUpgradeable {
 
     /// @notice Create a proposal
     function propose(address target, bytes calldata callData) external returns (uint256) {
-        require(cperpToken.balanceOf(msg.sender) > 0, "Governance: no voting power");
+        require(prpmanToken.balanceOf(msg.sender) > 0, "Governance: no voting power");
 
         proposalCount++;
         proposals[proposalCount] = Proposal({
@@ -66,7 +66,7 @@ contract Governance is IGovernance, OwnableUpgradeable, UUPSUpgradeable {
         require(block.timestamp <= p.deadline, "Governance: voting ended");
         require(!hasVoted[proposalId][msg.sender], "Governance: already voted");
 
-        uint256 weight = cperpToken.balanceOf(msg.sender);
+        uint256 weight = prpmanToken.balanceOf(msg.sender);
         require(weight > 0, "Governance: no voting power");
 
         hasVoted[proposalId][msg.sender] = true;
@@ -87,7 +87,7 @@ contract Governance is IGovernance, OwnableUpgradeable, UUPSUpgradeable {
         require(block.timestamp > p.deadline, "Governance: voting not ended");
         require(!p.executed, "Governance: already executed");
 
-        uint256 totalSupply = cperpToken.totalSupply();
+        uint256 totalSupply = prpmanToken.totalSupply();
         uint256 totalVotes = p.forVotes + p.againstVotes;
 
         // Quorum check

@@ -27,7 +27,7 @@ contract GovernanceTest is TestSetup {
             address(govImpl),
             abi.encodeCall(Governance.initialize, (
                 admin,
-                address(cperp),
+                address(prpman),
                 2000,  // 20% quorum
                 5100,  // 51% majority
                 48 hours
@@ -37,9 +37,9 @@ contract GovernanceTest is TestSetup {
         // Transfer FeeManager ownership to Governance
         feeManager.transferOwnership(address(governance));
 
-        // Distribute CPERP to voters
-        cperp.transfer(user1, 300_000e18); // 30%
-        cperp.transfer(user2, 200_000e18); // 20%
+        // Distribute PRPMAN to voters
+        prpman.transfer(user1, 300_000e18); // 30%
+        prpman.transfer(user2, 200_000e18); // 20%
         // admin keeps 500_000 (50%)
 
         vm.stopPrank();
@@ -54,7 +54,7 @@ contract GovernanceTest is TestSetup {
     }
 
     function test_propose_rejectsNoVotingPower() public {
-        vm.prank(user3); // has 0 CPERP
+        vm.prank(user3); // has 0 PRPMAN
         vm.expectRevert("Governance: no voting power");
         governance.propose(address(feeManager), "");
     }

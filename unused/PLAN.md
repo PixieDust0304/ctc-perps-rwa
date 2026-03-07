@@ -26,8 +26,8 @@ ctc-perps/
         WaterfallWithdraw.sol     # LP waterfall withdrawal algorithm
       tokens/
         MockUSDC.sol              # ERC-20, 18 decimals, mint/burn by owner
-        CLP.sol                   # LP receipt token, UUPS
-        CPERP.sol                 # Governance token, standard ERC-20
+        PMLP.sol                   # LP receipt token, UUPS
+        PRPMAN.sol                 # Governance token, standard ERC-20
       core/
         Oracle.sol                # Price storage + ECDSA verification (abi.encode), UUPS
         Pool.sol                  # Single pool, LP deposit/withdraw, UUPS
@@ -38,7 +38,7 @@ ctc-perps/
         FeeManager.sol            # Fee accrual + distribution, UUPS
         MarketState.sol           # Per-feed open/close state machine, UUPS
       governance/
-        Governance.sol            # CPERP-weighted voting, UUPS
+        Governance.sol            # PRPMAN-weighted voting, UUPS
       deploy/
         DeployLocal.s.sol         # Anvil deployment script
     test/
@@ -129,7 +129,7 @@ All core contracts: UUPS (ERC-1967) via OpenZeppelin `UUPSUpgradeable` + `Ownabl
 - Signature verification uses `abi.encode` (not `encodePacked`) to prevent hash collisions with dynamic arrays
 
 **Pool.sol**
-- `address usdc, clpToken, protocolFeeReceiver`
+- `address usdc, pmlpToken, protocolFeeReceiver`
 - `uint256 totalPoolUSDC`
 - `address[] custodies` — 4 custody contract addresses
 - `mapping(address => uint256) custodyAllocationBps` — DAO-set ratios
@@ -221,10 +221,10 @@ liquidatable = effective_collateral < initial_collateral * 10%
 ```
 Note: 10% maintenance margin (1000 bps). At 100x leverage, liquidation triggers at ~0.9% adverse move.
 
-**CLP Mint/Burn**:
+**PMLP Mint/Burn**:
 ```
-clp_to_mint = (usdc_deposited / total_pool_usdc) * clp_total_supply  (or 1:1 if first deposit)
-usdc_to_return = (clp_burned / clp_total_supply) * total_pool_usdc
+pmlp_to_mint = (usdc_deposited / total_pool_usdc) * pmlp_total_supply  (or 1:1 if first deposit)
+usdc_to_return = (pmlp_burned / pmlp_total_supply) * total_pool_usdc
 ```
 
 ## Database Schema (Prisma)

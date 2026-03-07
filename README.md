@@ -61,7 +61,7 @@ ctc-perps/
 ├── contracts/                 # Solidity smart contracts (Foundry)
 │   ├── src/
 │   │   ├── core/              # Oracle, Trading, P2PTrading, Pool, VAMM, Custody, FeeManager, MarketState
-│   │   ├── tokens/            # MockUSDC, CLP (LP token), CPERP (governance token)
+│   │   ├── tokens/            # MockUSDC, PMLP (LP token), PRPMAN (governance token)
 │   │   ├── governance/        # Governance (DAO proposals)
 │   │   └── libraries/         # FeeCalculator, FixedPointMath, PositionUtils, PriceUtils, WaterfallWithdraw
 │   ├── test/
@@ -125,9 +125,9 @@ ORACLE_SIGNER="0x70997970C51812dc3A010C7d01b50e0d17dc79C8" \
 ```
 
 Deployment does the following in order:
-1. Deploys tokens: MockUSDC, CLP (proxy), CPERP
+1. Deploys tokens: MockUSDC, PMLP (proxy), PRPMAN
 2. Deploys Oracle (proxy) with feeds [2056, 2069, 2003, 2062] and staleness threshold **210 seconds**
-3. Deploys Pool (proxy), transfers CLP ownership to Pool
+3. Deploys Pool (proxy), transfers PMLP ownership to Pool
 4. Deploys FeeManager (proxy)
 5. Deploys MarketState (proxy), registers all 4 feeds
 6. Deploys 4 Custody contracts (one per feed)
@@ -233,8 +233,8 @@ NEXT_PUBLIC_MARKET_STATE_ADDRESS="0x..." \
 NEXT_PUBLIC_ORACLE_ADDRESS="0x..." \
 NEXT_PUBLIC_VAMM_ADDRESS="0x..." \
 NEXT_PUBLIC_GOVERNANCE_ADDRESS="0x..." \
-NEXT_PUBLIC_CLP_ADDRESS="0x..." \
-NEXT_PUBLIC_CPERP_ADDRESS="0x..." \
+NEXT_PUBLIC_PMLP_ADDRESS="0x..." \
+NEXT_PUBLIC_PRPMAN_ADDRESS="0x..." \
 NEXT_PUBLIC_FEE_MANAGER_ADDRESS="0x..." \
 NEXT_PUBLIC_CUSTODY_ADDRESSES='{"2056":"0x...","2069":"0x...","2003":"0x...","2062":"0x..."}' \
 NEXT_PUBLIC_WS_URL="ws://localhost:8080" \

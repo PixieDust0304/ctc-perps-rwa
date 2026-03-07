@@ -1,8 +1,8 @@
 // Contract addresses — populated after deploy
 export const CONTRACTS = {
   mockUSDC: process.env.NEXT_PUBLIC_MOCK_USDC_ADDRESS || "",
-  clp: process.env.NEXT_PUBLIC_CLP_ADDRESS || "",
-  cperp: process.env.NEXT_PUBLIC_CPERP_ADDRESS || "",
+  pmlp: process.env.NEXT_PUBLIC_PMLP_ADDRESS || "",
+  prpman: process.env.NEXT_PUBLIC_PRPMAN_ADDRESS || "",
   oracle: process.env.NEXT_PUBLIC_ORACLE_ADDRESS || "",
   pool: process.env.NEXT_PUBLIC_POOL_ADDRESS || "",
   trading: process.env.NEXT_PUBLIC_TRADING_ADDRESS || "",
@@ -167,7 +167,7 @@ export const POOL_ABI = [
   {
     name: "withdraw",
     type: "function",
-    inputs: [{ name: "clpAmount", type: "uint256" }],
+    inputs: [{ name: "pmlpAmount", type: "uint256" }],
     outputs: [],
     stateMutability: "nonpayable",
   },

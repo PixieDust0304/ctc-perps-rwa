@@ -27,9 +27,9 @@ contract TradingTest is TestSetup {
         Pool poolImpl = new Pool();
         pool = Pool(address(new ERC1967Proxy(
             address(poolImpl),
-            abi.encodeCall(Pool.initialize, (admin, address(usdc), address(clp), admin, 9000))
+            abi.encodeCall(Pool.initialize, (admin, address(usdc), address(pmlp), admin, 9000))
         )));
-        clp.transferOwnership(address(pool));
+        pmlp.transferOwnership(address(pool));
 
         // Deploy Gold Custody
         Custody custImpl = new Custody();

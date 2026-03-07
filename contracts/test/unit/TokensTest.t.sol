@@ -18,36 +18,36 @@ contract TokensTest is TestSetup {
         usdc.mint(user1, 1e18);
     }
 
-    function test_clp_initialize() public view {
-        assertEq(clp.name(), "pErp-man LP");
-        assertEq(clp.symbol(), "CLP");
-        assertEq(clp.owner(), admin);
+    function test_pmlp_initialize() public view {
+        assertEq(pmlp.name(), "pErp-man LP");
+        assertEq(pmlp.symbol(), "PMLP");
+        assertEq(pmlp.owner(), admin);
     }
 
-    function test_clp_mintBurn() public {
+    function test_pmlp_mintBurn() public {
         vm.startPrank(admin);
-        clp.mint(user1, 100e18);
-        assertEq(clp.balanceOf(user1), 100e18);
-        clp.burn(user1, 50e18);
-        assertEq(clp.balanceOf(user1), 50e18);
+        pmlp.mint(user1, 100e18);
+        assertEq(pmlp.balanceOf(user1), 100e18);
+        pmlp.burn(user1, 50e18);
+        assertEq(pmlp.balanceOf(user1), 50e18);
         vm.stopPrank();
     }
 
-    function test_clp_onlyOwnerMint() public {
+    function test_pmlp_onlyOwnerMint() public {
         vm.prank(user1);
         vm.expectRevert();
-        clp.mint(user1, 1e18);
+        pmlp.mint(user1, 1e18);
     }
 
-    function test_cperp_totalSupply() public view {
-        assertEq(cperp.totalSupply(), 1_000_000e18);
-        assertEq(cperp.balanceOf(admin), 1_000_000e18);
+    function test_prpman_totalSupply() public view {
+        assertEq(prpman.totalSupply(), 1_000_000e18);
+        assertEq(prpman.balanceOf(admin), 1_000_000e18);
     }
 
-    function test_cperp_transfer() public {
+    function test_prpman_transfer() public {
         vm.prank(admin);
-        cperp.transfer(user1, 100e18);
-        assertEq(cperp.balanceOf(user1), 100e18);
-        assertEq(cperp.balanceOf(admin), 999_900e18);
+        prpman.transfer(user1, 100e18);
+        assertEq(prpman.balanceOf(user1), 100e18);
+        assertEq(prpman.balanceOf(admin), 999_900e18);
     }
 }
