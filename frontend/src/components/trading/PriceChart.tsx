@@ -12,18 +12,18 @@ import {
 } from "lightweight-charts";
 
 const INTERVALS = [
-  { label: "1m", interval: "1m", lookbackMs: 3_600_000 },
-  { label: "5m", interval: "5m", lookbackMs: 7_200_000 },
-  { label: "10m", interval: "10m", lookbackMs: 14_400_000 },
-  { label: "30m", interval: "30m", lookbackMs: 43_200_000 },
-  { label: "1h", interval: "1h", lookbackMs: 86_400_000 },
-  { label: "6h", interval: "6h", lookbackMs: 604_800_000 },
-  { label: "12h", interval: "12h", lookbackMs: 2_592_000_000 },
-  { label: "24h", interval: "1d", lookbackMs: 7_776_000_000 },
-  { label: "7d", interval: "1d", lookbackMs: 15_552_000_000 },
-  { label: "1M", interval: "1d", lookbackMs: 31_536_000_000 },
-  { label: "6M", interval: "1d", lookbackMs: 31_536_000_000 },
-  { label: "1Y", interval: "1d", lookbackMs: 31_536_000_000 },
+  { label: "1m", interval: "1m", lookbackMs: 3_600_000, movementMs: 60_000 },
+  { label: "5m", interval: "5m", lookbackMs: 7_200_000, movementMs: 300_000 },
+  { label: "10m", interval: "10m", lookbackMs: 14_400_000, movementMs: 600_000 },
+  { label: "30m", interval: "30m", lookbackMs: 43_200_000, movementMs: 1_800_000 },
+  { label: "1h", interval: "1h", lookbackMs: 86_400_000, movementMs: 3_600_000 },
+  { label: "6h", interval: "6h", lookbackMs: 604_800_000, movementMs: 21_600_000 },
+  { label: "12h", interval: "12h", lookbackMs: 2_592_000_000, movementMs: 43_200_000 },
+  { label: "24h", interval: "1d", lookbackMs: 7_776_000_000, movementMs: 86_400_000 },
+  { label: "7d", interval: "1d", lookbackMs: 15_552_000_000, movementMs: 604_800_000 },
+  { label: "1M", interval: "1d", lookbackMs: 31_536_000_000, movementMs: 2_592_000_000 },
+  { label: "6M", interval: "1d", lookbackMs: 31_536_000_000, movementMs: 15_552_000_000 },
+  { label: "1Y", interval: "1d", lookbackMs: 31_536_000_000, movementMs: 31_536_000_000 },
 ] as const;
 
 interface PriceChartProps {
@@ -64,6 +64,7 @@ export function PriceChart({
   const feedIdRef = useRef(feedId);
   const marketStatesRef = useRef<{ state: string; timestamp: number }[]>([]);
   const candleTimesRef = useRef<number[]>([]);
+  const startPriceRef = useRef<number>(0);
 
   const [selectedIdx, setSelectedIdx] = useState(0); // default 1m
   const [movement, setMovement] = useState<{ changePercent: number } | null>(null);
@@ -111,26 +112,7 @@ export function PriceChart({
     if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current);
   }, [feedId, selectedIdx]);
 
-  // Fetch movement data — use the selected interval's lookback directly
-  const movementLookback = selected.lookbackMs;
-  const fetchMovement = useCallback(async () => {
-    try {
-      const res = await fetch(
-        `${apiUrl}/api/movement/${feedId}?lookback=${movementLookback}`
-      );
-      if (!res.ok) { setMovement(null); return; }
-      const data = await res.json();
-      if (feedIdRef.current === feedId) setMovement(data);
-    } catch {
-      setMovement(null);
-    }
-  }, [feedId, movementLookback, apiUrl]);
-
-  useEffect(() => {
-    fetchMovement();
-    const id = setInterval(fetchMovement, 5000);
-    return () => clearInterval(id);
-  }, [fetchMovement]);
+  // Movement is computed from visible candle data (set inside fetchCandles)
 
   // Fetch candles and build chart when feed or interval changes
   useEffect(() => {
@@ -343,6 +325,36 @@ export function PriceChart({
           );
 
           seriesRef.current?.setData(points);
+
+          // Compute movement: latest price vs price N ago (matching the label)
+          // If data doesn't go back far enough, use the oldest candle we have
+          if (points.length >= 2) {
+            const latestPrice = points[points.length - 1].value;
+            const targetTimeSec = Math.floor((Date.now() - selected.movementMs) / 1000);
+            const oldestTimeSec = points[0].time as number;
+            let compPrice: number;
+            if (targetTimeSec <= oldestTimeSec) {
+              // Not enough data for full window — use oldest available
+              compPrice = points[0].value;
+            } else {
+              // Find candle closest to targetTimeSec
+              compPrice = points[0].value;
+              let bestDist = Math.abs((points[0].time as number) - targetTimeSec);
+              for (const p of points) {
+                const dist = Math.abs((p.time as number) - targetTimeSec);
+                if (dist < bestDist) {
+                  bestDist = dist;
+                  compPrice = p.value;
+                }
+              }
+            }
+            startPriceRef.current = compPrice;
+            const changePercent = compPrice > 0 ? ((latestPrice - compPrice) / compPrice) * 100 : 0;
+            if (feedIdRef.current === feedId) setMovement({ changePercent });
+          } else {
+            startPriceRef.current = 0;
+            if (feedIdRef.current === feedId) setMovement(null);
+          }
         }
       } catch {
         // Oracle API not available
@@ -383,7 +395,7 @@ export function PriceChart({
       chartRef.current = null;
       seriesRef.current = null;
     };
-  }, [feedId, selectedIdx, apiUrl, selected.interval, selected.lookbackMs]);
+  }, [feedId, selectedIdx, apiUrl, selected.interval, selected.lookbackMs, selected.movementMs]);
 
   // Live price tick update
   useEffect(() => {
@@ -397,6 +409,13 @@ export function PriceChart({
       time: now as Time,
       value: currentPrice,
     });
+
+    // Update movement live
+    const sp = startPriceRef.current;
+    if (sp > 0) {
+      const changePercent = ((currentPrice - sp) / sp) * 100;
+      setMovement({ changePercent });
+    }
   }, [currentPrice, feedId, selected.interval]);
 
   const priceColor = flash
