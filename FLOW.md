@@ -1,8 +1,8 @@
-# CTC-Perps: System Architecture & Service Flow
+# pErp-man: System Architecture & Service Flow
 
 ## High-Level Overview
 
-CTC-Perps is a 5-service system: an **external price oracle**, a **TypeScript oracle service**, a **Solidity smart contract layer**, a **PostgreSQL database**, and a **Next.js frontend**. Every arrow below represents a real data or transaction flow.
+pErp-man is a 5-service system: an **external price oracle**, a **TypeScript oracle service**, a **Solidity smart contract layer**, a **PostgreSQL database**, and a **Next.js frontend**. Every arrow below represents a real data or transaction flow.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐

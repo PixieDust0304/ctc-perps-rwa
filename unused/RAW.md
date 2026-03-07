@@ -1,4 +1,4 @@
-# CTC-Perps: Raw Design Decisions & Cross-Check
+# pErp-man: Raw Design Decisions & Cross-Check
 
 ## Chain & Environment
 

@@ -1,4 +1,4 @@
-# CTC-Perps: Implementation Plan
+# pErp-man: Implementation Plan
 
 ## Context
 
@@ -86,21 +86,23 @@ ctc-perps/
         pool/page.tsx             # LP deposit/withdraw
         governance/page.tsx       # DAO proposals
       components/
+        AppSidebar.tsx            # Sidebar navigation (Trade/Pool/Govern)
+        Footer.tsx                # Footer with credits and links
+        PixelTransition.tsx       # Pixel-based page transition animation
         trading/
           PriceChart.tsx          # Lightweight Charts v4 (1m-1Y intervals)
           OrderPanel.tsx          # Open position form
-          PositionList.tsx        # Active positions (via API, WS updates)
+          PositionsPanel.tsx      # All positions (trading + P2P + history tabs)
           P2PPositionList.tsx     # P2P positions (via API, WS updates)
           MarketSelector.tsx      # Asset tabs with liquidity tooltip on hover
           MarketStatusBanner.tsx  # OPEN/CLOSED + P2P warning
+          FaucetButton.tsx        # Mint test USDC
+          PnLPopup.tsx            # PnL details modal on position close
+          CustodyLiquidity.tsx    # Custody liquidity display
         pool/
-          DepositForm.tsx
-          WithdrawForm.tsx
-          PoolStats.tsx
+          PoolPanel.tsx           # LP deposit/withdraw/stats (single component)
         governance/
-          ProposalList.tsx
-          ProposalForm.tsx
-          VoteButton.tsx
+          GovernancePanel.tsx     # Proposals, voting, execution (single component)
       hooks/
         usePrices.ts              # WebSocket: prices, market state, positions
       lib/

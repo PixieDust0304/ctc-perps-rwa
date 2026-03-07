@@ -52,7 +52,7 @@ function serializeRow(row: Record<string, unknown>): Record<string, unknown> {
 }
 
 async function main() {
-  logger.info("Main", "CTC-Perps Oracle Service starting...");
+  logger.info("Main", "pErp-man Oracle Service starting...");
   logger.info("Main", `Autonom URL: ${config.autonomUrl}`);
   logger.info("Main", `RPC URL: ${config.rpcUrl}`);
   logger.info("Main", `Feed IDs: ${config.feedIds.join(", ")}`);

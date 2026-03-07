@@ -6,7 +6,7 @@ import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/Own
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
 /// @title CLP
-/// @notice LP receipt token for the CTC-Perps pool. UUPS upgradeable.
+/// @notice LP receipt token for the pErp-man pool. UUPS upgradeable.
 /// @dev Only the Pool contract (owner) can mint/burn.
 contract CLP is ERC20Upgradeable, OwnableUpgradeable, UUPSUpgradeable {
     /// @custom:oz-upgrades-unsafe-allow constructor
@@ -15,7 +15,7 @@ contract CLP is ERC20Upgradeable, OwnableUpgradeable, UUPSUpgradeable {
     }
 
     function initialize(address owner_) external initializer {
-        __ERC20_init("CTC Perps LP", "CLP");
+        __ERC20_init("pErp-man LP", "CLP");
         __Ownable_init(owner_);
     }
 

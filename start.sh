@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# CTC-Perps Local Development Startup (fully self-contained)
+# pErp-man Local Development Startup (fully self-contained)
 # Kills stale processes, cleans artifacts, deploys fresh, starts everything.
 
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -339,7 +339,7 @@ log "Frontend started (PID ${PIDS[${#PIDS[@]}-1]})."
 # ─── Summary ─────────────────────────────────────────────────────
 echo ""
 echo "========================================="
-echo "  CTC-Perps Local Stack Running"
+echo "  pErp-man Local Stack Running"
 echo "========================================="
 echo "  Anvil RPC:     http://127.0.0.1:$ANVIL_PORT  (PID ${PIDS[0]})"
 echo "  Oracle WS:     ws://localhost:$WS_PORT"

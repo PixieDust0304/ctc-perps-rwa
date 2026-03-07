@@ -17,7 +17,7 @@ import {MarketState} from "../src/core/MarketState.sol";
 import {Governance} from "../src/governance/Governance.sol";
 
 /// @title DeployLocal
-/// @notice Deploys the full CTC-Perps stack to Anvil
+/// @notice Deploys the full pErp-man stack to Anvil
 contract DeployLocal is Script {
     // Feed IDs
     uint16 constant GOLD = 2056;

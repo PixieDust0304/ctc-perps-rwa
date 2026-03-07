@@ -1,6 +1,6 @@
-# CTC-Perps
+# pErp-man
 
-Decentralized perpetual futures platform for commodity trading. Supports Gold (XAU), Silver (XAG), Crude Oil (CL1), and Platinum (XPT) with real-time price feeds from Autonom Oracle.
+Decentralized perpetual futures platform for RWA commodity trading on CreditCoin. Supports Gold (XAU), Silver (XAG), Crude Oil (CL1), and Platinum (XPT) with real-time price feeds from Autonom Oracle.
 
 ## Quick Start
 
@@ -267,7 +267,7 @@ cd contracts
 ~/.foundry/bin/forge test
 ```
 
-119 tests across 16 test suites covering: Oracle price updates, Pool/Custody logic, fee calculation, fixed-point math, price utils, token minting, governance proposals, trading lifecycle (including addCollateral), P2P escrow, liquidation, custody drain, invariants.
+126 tests across 16 test suites covering: Oracle price updates, Pool/Custody logic, fee calculation, fixed-point math, price utils, token minting, governance proposals, trading lifecycle (including addCollateral), P2P escrow, liquidation, custody drain, invariants.
 
 Test setup uses the same feed IDs and staleness threshold as production (`contracts/test/helpers/TestSetup.sol`).
 
@@ -278,7 +278,7 @@ cd oracle
 npx vitest run
 ```
 
-Tests cover: price fetcher, price store/candles, market state detection.
+35 tests across 6 test files covering: price fetcher, price store/candles, market state detection, fee accrual keeper, liquidation engine, position tracker.
 
 ---
 

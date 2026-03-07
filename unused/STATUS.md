@@ -1,4 +1,4 @@
-# CTC-Perps: Build Status
+# pErp-man: Build Status
 
 ## Current Phase: Production-Ready v1 — Economics Hardened + DB Persistence
 
@@ -116,28 +116,31 @@
 
 ## Test Summary
 
-**114 Solidity tests passing** across 16 test suites:
+**126 Solidity tests passing** across 16 test suites:
 - `FixedPointMathTest` (8 tests, incl. fuzz)
 - `PriceUtilsTest` (5 tests)
-- `FeeCalculatorTest` (9 tests)
+- `FeeCalculatorTest` (14 tests)
 - `TokensTest` (8 tests)
-- `OracleTest` (13 tests)
-- `PoolCustodyTest` (15 tests)
-- `GovernanceTest` (7 tests)
-- `TradingTest` (10 integration tests)
-- `P2PTradingTest` (7 integration tests)
+- `OracleTest` (14 tests)
+- `PoolCustodyTest` (19 tests)
+- `GovernanceTest` (10 tests)
+- `TradingTest` (17 integration tests)
+- `P2PTradingTest` (8 integration tests)
 - `FullLifecycleTest` (8 integration tests)
-- `MarketTransitionTest` (3 integration tests)
+- `MarketTransitionTest` (4 integration tests)
 - `CustodyDrainTest` (3 integration tests)
 - `P2PEscrowDrainTest` (4 integration tests)
 - `PoolInvariantTest` (4 invariant tests)
 - `TradingInvariantTest` (4 invariant tests)
-- `P2PInvariantTest` (3 invariant tests)
+- `P2PInvariantTest` (4 invariant tests)
 
-**18 Oracle TypeScript tests passing** across 3 test files:
-- `fetcher.test.ts` (4 tests)
-- `priceStore.test.ts` (7 tests)
-- `marketStateDetector.test.ts` (7 tests)
+**35 Oracle TypeScript tests passing** across 6 test files:
+- `fetcher.test.ts` (5 tests)
+- `priceStore.test.ts` (8 tests)
+- `marketStateDetector.test.ts` (8 tests)
+- `feeAccrualKeeper.test.ts` (1 test)
+- `liquidationEngine.test.ts` (11 tests)
+- `positionTracker.test.ts` (2 tests)
 
 ## Critical Bugs Found & Fixed
 

@@ -43,7 +43,7 @@ export default function TradingPage() {
               pErp-man
             </h1>
             <span className="text-[10px] font-body uppercase tracking-widest leading-none" style={{ color: "var(--dim-text)" }}>
-              Arcade energy for perpetual trading
+              Arcade energy for RWA perpetual trading
             </span>
           </div>
           <div className="flex items-center gap-3">

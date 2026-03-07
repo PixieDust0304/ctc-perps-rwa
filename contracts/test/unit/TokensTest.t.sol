@@ -19,7 +19,7 @@ contract TokensTest is TestSetup {
     }
 
     function test_clp_initialize() public view {
-        assertEq(clp.name(), "CTC Perps LP");
+        assertEq(clp.name(), "pErp-man LP");
         assertEq(clp.symbol(), "CLP");
         assertEq(clp.owner(), admin);
     }

@@ -4,7 +4,7 @@ Parameters
 
 Licensor: PerpMan
 
-Licensed Work: PERP MAN, including all source code and associated files made available in this repository, Copyright (C) 2026 PerpMan.
+Licensed Work: pErp-man, including all source code and associated files made available in this repository, Copyright (C) 2026 PerpMan.
 
 Additional Use Grant: None
 
