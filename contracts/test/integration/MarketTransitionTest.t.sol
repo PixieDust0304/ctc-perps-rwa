@@ -49,7 +49,7 @@ contract MarketTransitionTest is TestSetup {
         FeeManager fmImpl = new FeeManager();
         feeManager = FeeManager(address(new ERC1967Proxy(
             address(fmImpl),
-            abi.encodeCall(FeeManager.initialize, (admin, 10, 5, 5, 9000))
+            abi.encodeCall(FeeManager.initialize, (admin, 10, 5, 5, 9000, 10))
         )));
 
         MarketState msImpl = new MarketState();
@@ -81,7 +81,7 @@ contract MarketTransitionTest is TestSetup {
             abi.encodeCall(P2PTrading.initialize, (
                 admin, address(usdc), address(vamm), address(pool),
                 address(marketState), address(feeManager),
-                100e18, 10e18, 120
+                10e18, 120
             ))
         )));
 
@@ -154,7 +154,7 @@ contract MarketTransitionTest is TestSetup {
         // User3 opens P2P position during off-hours
         vm.startPrank(user3);
         usdc.approve(address(p2pTrading), 2000e18);
-        p2pTrading.openP2PPosition(GOLD_FEED, true, 2000e18, 5e18);
+        p2pTrading.openP2PPosition(GOLD_FEED, true, 2000e18);
         vm.stopPrank();
 
         assertEq(_totalSystemUSDC(), systemBefore, "USDC after P2P open");
@@ -189,17 +189,17 @@ contract MarketTransitionTest is TestSetup {
         // Two traders open P2P positions
         vm.startPrank(user2);
         usdc.approve(address(p2pTrading), 1000e18);
-        p2pTrading.openP2PPosition(GOLD_FEED, true, 1000e18, 5e18);
+        p2pTrading.openP2PPosition(GOLD_FEED, true, 1000e18);
         vm.stopPrank();
 
         vm.startPrank(user3);
         usdc.approve(address(p2pTrading), 1000e18);
-        p2pTrading.openP2PPosition(GOLD_FEED, false, 1000e18, 5e18);
+        p2pTrading.openP2PPosition(GOLD_FEED, false, 1000e18);
         vm.stopPrank();
 
         uint256 escrowAfterOpen = p2pTrading.p2pEscrowBalance(GOLD_FEED);
-        // Each gets collateralAfterFee = 1000 - 0.5 = 999.5 (0.1% of 5000 notional = 5)
-        // So escrow = 995 + 995 = 1990
+        // Each gets collateralAfterFee = 1000 - 1 = 999 (0.1% of 1000 spot = 1)
+        // So escrow = 999 + 999 = 1998
 
         // User2 closes — even if profitable, payout capped at other's escrow
         vm.warp(block.timestamp + 121);
@@ -235,13 +235,13 @@ contract MarketTransitionTest is TestSetup {
         // Multiple P2P positions
         vm.startPrank(user2);
         usdc.approve(address(p2pTrading), 3000e18);
-        p2pTrading.openP2PPosition(GOLD_FEED, true, 1000e18, 5e18);
-        p2pTrading.openP2PPosition(GOLD_FEED, true, 2000e18, 5e18);
+        p2pTrading.openP2PPosition(GOLD_FEED, true, 1000e18);
+        p2pTrading.openP2PPosition(GOLD_FEED, true, 2000e18);
         vm.stopPrank();
 
         vm.startPrank(user3);
         usdc.approve(address(p2pTrading), 3000e18);
-        p2pTrading.openP2PPosition(GOLD_FEED, false, 3000e18, 5e18);
+        p2pTrading.openP2PPosition(GOLD_FEED, false, 3000e18);
         vm.stopPrank();
 
         assertEq(_totalSystemUSDC(), systemBefore, "USDC after P2P opens");

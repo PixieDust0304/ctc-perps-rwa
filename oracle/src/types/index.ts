@@ -33,6 +33,7 @@ export interface PriceTick {
   rawPrice: bigint;
   timestamp: number; // ms
   fresh: boolean;
+  source?: "oracle" | "vamm";
 }
 
 export interface MarketStateUpdate {
@@ -42,7 +43,7 @@ export interface MarketStateUpdate {
 }
 
 export interface WebSocketMessage {
-  type: "price" | "marketState" | "candle" | "position";
+  type: "price" | "marketState" | "candle" | "position" | "vammPrice";
   data: unknown;
 }
 
@@ -54,6 +55,7 @@ export interface CandleData {
   low: string;
   close: string;
   volume: string;
+  source: string;
   timestamp: number;
 }
 

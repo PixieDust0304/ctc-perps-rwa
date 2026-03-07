@@ -11,17 +11,17 @@ import {
 } from "lightweight-charts";
 
 const INTERVALS = [
-  { label: "1m", interval: "1m", lookbackMs: 60_000 },
-  { label: "5m", interval: "5m", lookbackMs: 300_000 },
-  { label: "10m", interval: "10m", lookbackMs: 600_000 },
-  { label: "30m", interval: "30m", lookbackMs: 1_800_000 },
-  { label: "1h", interval: "1h", lookbackMs: 3_600_000 },
-  { label: "6h", interval: "6h", lookbackMs: 21_600_000 },
-  { label: "12h", interval: "12h", lookbackMs: 43_200_000 },
-  { label: "24h", interval: "1d", lookbackMs: 86_400_000 },
-  { label: "7d", interval: "1d", lookbackMs: 604_800_000 },
-  { label: "1M", interval: "1d", lookbackMs: 2_592_000_000 },
-  { label: "6M", interval: "1d", lookbackMs: 15_552_000_000 },
+  { label: "1m", interval: "1m", lookbackMs: 3_600_000 },
+  { label: "5m", interval: "5m", lookbackMs: 7_200_000 },
+  { label: "10m", interval: "10m", lookbackMs: 14_400_000 },
+  { label: "30m", interval: "30m", lookbackMs: 43_200_000 },
+  { label: "1h", interval: "1h", lookbackMs: 86_400_000 },
+  { label: "6h", interval: "6h", lookbackMs: 604_800_000 },
+  { label: "12h", interval: "12h", lookbackMs: 2_592_000_000 },
+  { label: "24h", interval: "1d", lookbackMs: 7_776_000_000 },
+  { label: "7d", interval: "1d", lookbackMs: 15_552_000_000 },
+  { label: "1M", interval: "1d", lookbackMs: 31_536_000_000 },
+  { label: "6M", interval: "1d", lookbackMs: 31_536_000_000 },
   { label: "1Y", interval: "1d", lookbackMs: 31_536_000_000 },
 ] as const;
 
@@ -30,6 +30,7 @@ interface PriceChartProps {
   feedName: string;
   currentPrice: number;
   apiUrl?: string;
+  isVammPrice?: boolean;
 }
 
 export function PriceChart({
@@ -37,6 +38,7 @@ export function PriceChart({
   feedName,
   currentPrice,
   apiUrl = "http://localhost:3001",
+  isVammPrice = false,
 }: PriceChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -255,6 +257,11 @@ export function PriceChart({
       <div className="flex items-center justify-between px-4 py-2.5" style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
         <div className="flex items-center gap-3">
           <span className="font-pixel text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--dim-text)" }}>{feedName} / USD</span>
+          {isVammPrice && (
+            <span className="text-xs font-pixel font-bold px-2.5 py-1 rounded-md animate-pulse" style={{ color: "#e9d5ff", background: "linear-gradient(135deg, rgba(168, 85, 247, 0.35), rgba(139, 92, 246, 0.25))", border: "1px solid rgba(168, 85, 247, 0.5)", boxShadow: "0 0 12px rgba(168, 85, 247, 0.3), inset 0 1px 0 rgba(255,255,255,0.1)" }}>
+              VAMM PRICE
+            </span>
+          )}
           <span
             className={`text-xl font-body font-bold px-2 py-0.5 rounded-lg transition-all duration-1000 ${priceColor} ${flashBg}`}
           >

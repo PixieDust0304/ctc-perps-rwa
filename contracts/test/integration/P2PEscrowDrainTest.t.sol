@@ -47,7 +47,7 @@ contract P2PEscrowDrainTest is TestSetup {
         FeeManager fmImpl = new FeeManager();
         feeManager = FeeManager(address(new ERC1967Proxy(
             address(fmImpl),
-            abi.encodeCall(FeeManager.initialize, (admin, 10, 5, 5, 9000))
+            abi.encodeCall(FeeManager.initialize, (admin, 10, 5, 5, 9000, 10))
         )));
 
         MarketState msImpl = new MarketState();
@@ -69,7 +69,7 @@ contract P2PEscrowDrainTest is TestSetup {
             abi.encodeCall(P2PTrading.initialize, (
                 admin, address(usdc), address(vamm), address(pool),
                 address(marketState), address(feeManager),
-                100e18, 10e18, 120
+                10e18, 120
             ))
         )));
 
@@ -107,13 +107,13 @@ contract P2PEscrowDrainTest is TestSetup {
         // User2 opens a LONG
         vm.startPrank(user2);
         usdc.approve(address(p2pTrading), 10_000e18);
-        p2pTrading.openP2PPosition(GOLD_FEED, true, 10_000e18, 10e18);
+        p2pTrading.openP2PPosition(GOLD_FEED, true, 10_000e18);
         vm.stopPrank();
 
         // User3 opens a SHORT
         vm.startPrank(user3);
         usdc.approve(address(p2pTrading), 10_000e18);
-        p2pTrading.openP2PPosition(GOLD_FEED, false, 10_000e18, 10e18);
+        p2pTrading.openP2PPosition(GOLD_FEED, false, 10_000e18);
         vm.stopPrank();
 
         // Escrow should match USDC after opens
@@ -158,19 +158,19 @@ contract P2PEscrowDrainTest is TestSetup {
         // User1 opens LONG (pushes price up)
         vm.startPrank(user1);
         usdc.approve(address(p2pTrading), 5_000e18);
-        p2pTrading.openP2PPosition(GOLD_FEED, true, 5_000e18, 10e18);
+        p2pTrading.openP2PPosition(GOLD_FEED, true, 5_000e18);
         vm.stopPrank();
 
         // User2 opens SHORT
         vm.startPrank(user2);
         usdc.approve(address(p2pTrading), 5_000e18);
-        p2pTrading.openP2PPosition(GOLD_FEED, false, 5_000e18, 10e18);
+        p2pTrading.openP2PPosition(GOLD_FEED, false, 5_000e18);
         vm.stopPrank();
 
         // User3 opens SHORT
         vm.startPrank(user3);
         usdc.approve(address(p2pTrading), 5_000e18);
-        p2pTrading.openP2PPosition(GOLD_FEED, false, 5_000e18, 10e18);
+        p2pTrading.openP2PPosition(GOLD_FEED, false, 5_000e18);
         vm.stopPrank();
 
         vm.warp(block.timestamp + 121);
@@ -215,13 +215,13 @@ contract P2PEscrowDrainTest is TestSetup {
         // User2 opens LONG
         vm.startPrank(user2);
         usdc.approve(address(p2pTrading), 5_000e18);
-        p2pTrading.openP2PPosition(GOLD_FEED, true, 5_000e18, 10e18);
+        p2pTrading.openP2PPosition(GOLD_FEED, true, 5_000e18);
         vm.stopPrank();
 
         // User3 opens SHORT
         vm.startPrank(user3);
         usdc.approve(address(p2pTrading), 5_000e18);
-        p2pTrading.openP2PPosition(GOLD_FEED, false, 5_000e18, 10e18);
+        p2pTrading.openP2PPosition(GOLD_FEED, false, 5_000e18);
         vm.stopPrank();
 
         vm.warp(block.timestamp + 200);
@@ -251,13 +251,13 @@ contract P2PEscrowDrainTest is TestSetup {
         // Open 3 positions of different sizes
         vm.startPrank(user1);
         usdc.approve(address(p2pTrading), 20_000e18);
-        p2pTrading.openP2PPosition(GOLD_FEED, true, 3_000e18, 5e18);
-        p2pTrading.openP2PPosition(GOLD_FEED, true, 7_000e18, 5e18);
+        p2pTrading.openP2PPosition(GOLD_FEED, true, 3_000e18);
+        p2pTrading.openP2PPosition(GOLD_FEED, true, 7_000e18);
         vm.stopPrank();
 
         vm.startPrank(user2);
         usdc.approve(address(p2pTrading), 10_000e18);
-        p2pTrading.openP2PPosition(GOLD_FEED, false, 10_000e18, 5e18);
+        p2pTrading.openP2PPosition(GOLD_FEED, false, 10_000e18);
         vm.stopPrank();
 
         // Check after every close

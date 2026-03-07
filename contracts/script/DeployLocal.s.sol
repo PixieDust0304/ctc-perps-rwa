@@ -25,11 +25,11 @@ contract DeployLocal is Script {
     uint16 constant CRUDE_OIL = 2003;
     uint16 constant PLATINUM = 2062;
 
-    // VAMM depths (virtual depth in USD, 18 decimals)
-    uint256 constant GOLD_DEPTH = 13_000_000e18;
-    uint256 constant SILVER_DEPTH = 5_000_000e18;
-    uint256 constant CRUDE_OIL_DEPTH = 2_000_000e18;
-    uint256 constant PLATINUM_DEPTH = 3_000_000e18;
+    // VAMM depths (virtual depth in USD, 18 decimals) — ~30% of 500K custody
+    uint256 constant GOLD_DEPTH = 150_000e18;
+    uint256 constant SILVER_DEPTH = 150_000e18;
+    uint256 constant CRUDE_OIL_DEPTH = 150_000e18;
+    uint256 constant PLATINUM_DEPTH = 150_000e18;
 
     function run() external {
         uint256 deployerKey = vm.envUint("DEPLOYER_PRIVATE_KEY");
@@ -76,7 +76,7 @@ contract DeployLocal is Script {
         FeeManager fmImpl = new FeeManager();
         FeeManager feeManager = FeeManager(address(new ERC1967Proxy(
             address(fmImpl),
-            abi.encodeCall(FeeManager.initialize, (deployer, 10, 5, 5, 9000))
+            abi.encodeCall(FeeManager.initialize, (deployer, 10, 5, 5, 9000, 10))
         )));
         console.log("FeeManager:", address(feeManager));
 
@@ -155,7 +155,7 @@ contract DeployLocal is Script {
             abi.encodeCall(P2PTrading.initialize, (
                 deployer, address(usdc), address(vamm), address(pool),
                 address(marketState), address(feeManager),
-                100e18, 10e18, 10
+                10e18, 10
             ))
         )));
         vamm.setP2PTrading(address(p2pTrading));

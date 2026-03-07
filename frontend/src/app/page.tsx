@@ -208,6 +208,7 @@ export default function TradingPage() {
                 feedId={selectedFeedId}
                 feedName={selectedPrice?.name ?? "Gold"}
                 currentPrice={selectedPrice?.price ?? 0}
+                isVammPrice={(selectedPrice as any)?.isVammPrice ?? false}
               />
             </div>
           </div>

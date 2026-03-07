@@ -43,6 +43,10 @@ contract Trading is ITrading, OwnableUpgradeable, UUPSUpgradeable, PausableUpgra
     uint256 public minPositionOpenTime;      // e.g., 120 seconds
 
     event FeesCollected(bytes32 indexed positionId, uint256 baseFee, uint256 openCloseFee);
+    event FeedCustodyUpdated(uint16 indexed feedId, address indexed custody);
+    event MaxLeverageUpdated(uint256 newMaxLeverage);
+    event MaintenanceMarginUpdated(uint256 newMaintenanceMarginBps);
+    event MinPositionOpenTimeUpdated(uint256 newMinPositionOpenTime);
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -207,11 +211,11 @@ contract Trading is ITrading, OwnableUpgradeable, UUPSUpgradeable, PausableUpgra
         // Transfer USDC from trader to custody
         usdc.safeTransferFrom(msg.sender, custodyAddr, amount);
 
+        // Update position collateral BEFORE external call (CEI pattern)
+        pos.collateral += amount;
+
         // Update custody balances (accrueFees inside)
         Custody(custodyAddr).increaseCollateral(amount);
-
-        // Update position collateral
-        pos.collateral += amount;
 
         emit CollateralAdded(positionId, msg.sender, amount, pos.collateral);
     }
@@ -286,6 +290,14 @@ contract Trading is ITrading, OwnableUpgradeable, UUPSUpgradeable, PausableUpgra
             payout -= totalFees;
         }
 
+        // PnL impact to pool: positive = pool gains (trader lost), negative = pool loses (trader won)
+        int256 pnlImpact = int256(pos.collateral) - int256(payoutBeforeFees);
+        int256 realizedPnl = isProfit ? int256(pnl) : -int256(pnl);
+
+        // Clear position BEFORE external calls (CEI pattern)
+        // pos is a memory copy, so all data we need is preserved
+        delete positions[positionId];
+
         // Update custody: decrease OI, release collateral
         custody.decreasePosition(pos.isLong, pos.sizeUsd, pos.collateral);
 
@@ -299,9 +311,7 @@ contract Trading is ITrading, OwnableUpgradeable, UUPSUpgradeable, PausableUpgra
             pool.receiveFees(totalFees);
         }
 
-        // Report PnL impact to pool: positive = pool gains (trader lost), negative = pool loses (trader won)
-        // PnL impact = collateral that stayed in custody minus fees (fees already reported above)
-        int256 pnlImpact = int256(pos.collateral) - int256(payoutBeforeFees);
+        // Report PnL impact to pool
         if (pnlImpact != 0) {
             pool.absorbPnL(pnlImpact);
         }
@@ -311,10 +321,6 @@ contract Trading is ITrading, OwnableUpgradeable, UUPSUpgradeable, PausableUpgra
         if (accumulatedFunding != 0) {
             pool.absorbPnL(accumulatedFunding);
         }
-
-        // Clear position
-        int256 realizedPnl = isProfit ? int256(pnl) : -int256(pnl);
-        delete positions[positionId];
 
         if (!isLiquidation) {
             emit PositionClosed(positionId, pos.owner, realizedPnl);
@@ -352,19 +358,26 @@ contract Trading is ITrading, OwnableUpgradeable, UUPSUpgradeable, PausableUpgra
 
     // Admin functions
     function setFeedCustody(uint16 feedId, address custody) external onlyOwner {
+        require(custody != address(0), "Trading: zero address");
         feedCustody[feedId] = custody;
+        emit FeedCustodyUpdated(feedId, custody);
     }
 
     function setMaxLeverage(uint256 lev) external onlyOwner {
+        require(lev >= 1e18, "Trading: leverage too low");
         maxLeverage = lev;
+        emit MaxLeverageUpdated(lev);
     }
 
     function setMaintenanceMarginBps(uint256 bps) external onlyOwner {
+        require(bps > 0 && bps <= 5000, "Trading: invalid margin bps");
         maintenanceMarginBps = bps;
+        emit MaintenanceMarginUpdated(bps);
     }
 
     function setMinPositionOpenTime(uint256 time) external onlyOwner {
         minPositionOpenTime = time;
+        emit MinPositionOpenTimeUpdated(time);
     }
 
     function pause() external onlyOwner { _pause(); }

@@ -49,6 +49,13 @@ export function broadcastMarketState(updates: MarketStateUpdate[]) {
   }
 }
 
+export function broadcastVammPrices(data: { feedId: number; price: string; timestamp: number }[]) {
+  broadcast({
+    type: "vammPrice",
+    data,
+  });
+}
+
 export function broadcastPositionUpdate(
   action: "opened" | "closed" | "liquidated" | "settled" | "collateralAdded",
   positionType: "trading" | "p2p",

@@ -43,12 +43,14 @@ function updateCandle(tick: PriceTick, interval: string) {
   const key = `${tick.feedId}-${interval}-${bucketTs}`;
 
   const priceStr = tick.price.toString();
+  const source = tick.source ?? "oracle";
   const existing = candles.get(key);
 
   if (existing) {
     if (BigInt(priceStr) > BigInt(existing.high)) existing.high = priceStr;
     if (BigInt(priceStr) < BigInt(existing.low)) existing.low = priceStr;
     existing.close = priceStr;
+    existing.source = source;
   } else {
     candles.set(key, {
       feedId: tick.feedId,
@@ -58,6 +60,7 @@ function updateCandle(tick: PriceTick, interval: string) {
       low: priceStr,
       close: priceStr,
       volume: "0",
+      source,
       timestamp: bucketTs,
     });
   }

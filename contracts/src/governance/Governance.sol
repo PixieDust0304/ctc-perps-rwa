@@ -19,6 +19,8 @@ contract Governance is IGovernance, OwnableUpgradeable, UUPSUpgradeable {
     mapping(uint256 => mapping(address => bool)) public hasVoted;
     uint256 public proposalCount;
 
+    event GovernanceConfigUpdated(string param, uint256 value);
+
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
@@ -111,14 +113,17 @@ contract Governance is IGovernance, OwnableUpgradeable, UUPSUpgradeable {
     // Admin setters (can also be changed via governance)
     function setQuorumBps(uint256 bps) external onlyOwner {
         quorumBps = bps;
+        emit GovernanceConfigUpdated("quorumBps", bps);
     }
 
     function setMajorityBps(uint256 bps) external onlyOwner {
         majorityBps = bps;
+        emit GovernanceConfigUpdated("majorityBps", bps);
     }
 
     function setVotingPeriod(uint256 period) external onlyOwner {
         votingPeriod = period;
+        emit GovernanceConfigUpdated("votingPeriod", period);
     }
 
     function _authorizeUpgrade(address) internal override onlyOwner {}

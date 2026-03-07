@@ -8,6 +8,7 @@ import {
   startWebSocketServer,
   broadcastPrices,
   broadcastMarketState,
+  broadcastVammPrices,
 } from "./services/websocketServer.js";
 import {
   initPositions,
@@ -22,6 +23,9 @@ import { handleMarketOpenSettlement } from "./keepers/p2pSettlementKeeper.js";
 import { logger } from "./utils/logger.js";
 import express from "express";
 import cors from "cors";
+import { createPublicClient, http, type Hex } from "viem";
+import { creditcoinLocal } from "./config/chains.js";
+import { VAMMABI, MarketStateABI } from "./abi/index.js";
 import type { PriceTick } from "./types/index.js";
 
 function serializeBigints(obj: object): Record<string, unknown> {
@@ -184,6 +188,54 @@ async function main() {
 
     // 2. Broadcast to WebSocket clients
     broadcastPrices(ticks);
+
+    // 2b. For closed markets, broadcast VAMM prices + inject synthetic ticks
+    if (config.vammAddress && config.marketStateAddress) {
+      try {
+        const vammClient = createPublicClient({
+          chain: creditcoinLocal,
+          transport: http(config.rpcUrl),
+        });
+        const vammPriceUpdates: { feedId: number; price: string; timestamp: number }[] = [];
+        for (const feedId of config.feedIds) {
+          const isOpen = await vammClient.readContract({
+            address: config.marketStateAddress as Hex,
+            abi: MarketStateABI,
+            functionName: "isMarketOpen",
+            args: [feedId],
+          }) as boolean;
+          if (isOpen) continue;
+          const vammState = await vammClient.readContract({
+            address: config.vammAddress as Hex,
+            abi: VAMMABI,
+            functionName: "vamms",
+            args: [feedId],
+          }) as [bigint, bigint, bigint, bigint, boolean];
+          if (!vammState[4]) continue; // not active
+          const vammPrice = await vammClient.readContract({
+            address: config.vammAddress as Hex,
+            abi: VAMMABI,
+            functionName: "getVAMMPrice",
+            args: [feedId],
+          }) as bigint;
+          vammPriceUpdates.push({ feedId, price: vammPrice.toString(), timestamp: Date.now() });
+          // Inject as synthetic tick for candle building — tagged as virtual VAMM price
+          storePriceTicks([{
+            feedId,
+            price: vammPrice,
+            rawPrice: vammPrice,
+            timestamp: Date.now(),
+            fresh: false,
+            source: "vamm",
+          }]);
+        }
+        if (vammPriceUpdates.length > 0) {
+          broadcastVammPrices(vammPriceUpdates);
+        }
+      } catch {
+        // VAMM read failed — skip this tick
+      }
+    }
 
     // 3. Detect market state changes
     const stateChanges = detectMarketStateChanges(ticks);

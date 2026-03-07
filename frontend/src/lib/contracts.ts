@@ -112,8 +112,14 @@ export const P2P_TRADING_ABI = [
       { name: "feedId", type: "uint16" },
       { name: "isLong", type: "bool" },
       { name: "collateral", type: "uint256" },
-      { name: "leverage", type: "uint256" },
     ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    name: "closeP2PPosition",
+    type: "function",
+    inputs: [{ name: "positionId", type: "bytes32" }],
     outputs: [],
     stateMutability: "nonpayable",
   },
@@ -138,6 +144,15 @@ export const P2P_TRADING_ABI = [
       },
     ],
     stateMutability: "view",
+  },
+  {
+    name: "P2PPositionClosed",
+    type: "event",
+    inputs: [
+      { name: "positionId", type: "bytes32", indexed: true },
+      { name: "owner", type: "address", indexed: true },
+      { name: "realizedPnl", type: "int256", indexed: false },
+    ],
   },
 ] as const;
 

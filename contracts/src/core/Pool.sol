@@ -34,6 +34,9 @@ contract Pool is IPool, OwnableUpgradeable, UUPSUpgradeable, ReentrancyGuard, Pa
 
     uint256 public lpShareBps; // e.g., 9000 = 90%
 
+    event TradingUpdated(address indexed oldTrading, address indexed newTrading);
+    event P2PTradingUpdated(address indexed oldP2PTrading, address indexed newP2PTrading);
+
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
@@ -49,6 +52,7 @@ contract Pool is IPool, OwnableUpgradeable, UUPSUpgradeable, ReentrancyGuard, Pa
         __Ownable_init(owner_);
         __Pausable_init();
 
+        require(protocolFeeReceiver_ != address(0), "Pool: zero fee receiver");
         usdc = IERC20(usdc_);
         clpToken = CLP(clpToken_);
         protocolFeeReceiver = protocolFeeReceiver_;
@@ -174,10 +178,14 @@ contract Pool is IPool, OwnableUpgradeable, UUPSUpgradeable, ReentrancyGuard, Pa
     }
 
     function setTrading(address trading_) external onlyOwner {
+        require(trading_ != address(0), "Pool: zero address");
+        emit TradingUpdated(trading, trading_);
         trading = trading_;
     }
 
     function setP2PTrading(address p2pTrading_) external onlyOwner {
+        require(p2pTrading_ != address(0), "Pool: zero address");
+        emit P2PTradingUpdated(p2pTrading, p2pTrading_);
         p2pTrading = p2pTrading_;
     }
 

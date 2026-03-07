@@ -24,7 +24,7 @@ ANVIL_PORT=8545
 WS_PORT=8080
 API_PORT=3001
 FRONTEND_PORT=3000
-DB_URL="postgresql://$(whoami)@localhost:5432/ctc_perps"
+DB_URL="postgresql://$(whoami)@localhost:5432/ctc_perps?host=/var/run/postgresql"
 
 PIDS=()
 
@@ -87,22 +87,34 @@ rm -rf "$CONTRACTS_DIR/broadcast/"
 
 # ─── 0b. Start PostgreSQL & wipe database ────────────────────────
 log "Starting PostgreSQL..."
-# Homebrew keg-only PostgreSQL may not be in PATH — add it
+# macOS: Homebrew keg-only PostgreSQL may not be in PATH
 for pgdir in /opt/homebrew/opt/postgresql@15/bin /opt/homebrew/opt/postgresql@16/bin /opt/homebrew/opt/postgresql/bin; do
   [ -x "$pgdir/psql" ] && export PATH="$pgdir:$PATH" && break
 done
-# Start PostgreSQL (no auto-start on boot — only runs with the protocol)
-if command -v pg_ctl &>/dev/null; then
+# macOS: Start via pg_ctl if available
+if [[ "$(uname)" == "Darwin" ]] && command -v pg_ctl &>/dev/null; then
   pg_ctl -D /opt/homebrew/var/postgresql@15 -l /tmp/ctc-postgres.log start 2>/dev/null || true
   sleep 2
 fi
+# Linux: ensure systemd service is running
+if [[ "$(uname)" == "Linux" ]] && command -v systemctl &>/dev/null; then
+  systemctl is-active --quiet postgresql || log "WARNING: PostgreSQL service not running. Start with: sudo systemctl start postgresql"
+fi
 log "Wiping database..."
 if command -v psql &>/dev/null; then
-  if psql -h localhost -U "$(whoami)" -c "SELECT 1" postgres &>/dev/null; then
+  # Try unix socket first (Linux peer auth), fall back to TCP (macOS)
+  DB_OK=false
+  if psql -U "$(whoami)" -c "SELECT 1" postgres &>/dev/null; then
+    psql -U "$(whoami)" -c "DROP DATABASE IF EXISTS ctc_perps;" postgres 2>&1 || true
+    psql -U "$(whoami)" -c "CREATE DATABASE ctc_perps;" postgres 2>&1 || true
+    DB_OK=true
+  elif psql -h localhost -U "$(whoami)" -c "SELECT 1" postgres &>/dev/null; then
     psql -h localhost -U "$(whoami)" -c "DROP DATABASE IF EXISTS ctc_perps;" postgres 2>&1 || true
     psql -h localhost -U "$(whoami)" -c "CREATE DATABASE ctc_perps;" postgres 2>&1 || true
+    DB_OK=true
+  fi
+  if [ "$DB_OK" = true ]; then
     log "PostgreSQL database wiped and recreated."
-    # Push Prisma schema to fresh database
     cd "$ORACLE_DIR"
     DATABASE_URL="$DB_URL" npx prisma db push --accept-data-loss 2>&1
     if [ $? -eq 0 ]; then

@@ -1,11 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { useAccount, useReadContracts } from "wagmi";
-import { parseEther, formatEther, type Address } from "viem";
+import { useAccount } from "wagmi";
+import { parseEther, type Address } from "viem";
 import { CONTRACTS, TRADING_ABI, P2P_TRADING_ABI, ERC20_ABI, CUSTODY_ABI, CUSTODY_ADDRESSES } from "../../lib/contracts";
 import { IconDollar } from "../AppSidebar";
 import { useContractWrite } from "../../hooks/useContractWrite";
+import { useReadContracts } from "wagmi";
+import { formatEther } from "viem";
 
 interface OrderPanelProps {
   feedId: number;
@@ -25,26 +27,26 @@ export function OrderPanel({
   const [collateral, setCollateral] = useState("");
   const [leverage, setLeverage] = useState("10");
 
+  const useP2P = !isMarketOpen;
   const collateralNum = parseFloat(collateral) || 0;
-  const leverageNum = parseFloat(leverage) || 1;
+  const leverageNum = useP2P ? 1 : parseFloat(leverage) || 1;
   const notional = collateralNum * leverageNum;
   const openFee = notional * 0.001; // 0.1%
   const collateralAfterFee = collateralNum - openFee;
   const sizeUsd = collateralAfterFee > 0 ? collateralAfterFee * leverageNum : 0;
   const feePercent = leverageNum * 0.1; // fee as % of collateral
 
-  // 10% maintenance margin
-  const liqPrice = currentPrice > 0 && leverageNum > 0
+  // 10% maintenance margin (only for leveraged trading)
+  const liqPrice = !useP2P && currentPrice > 0 && leverageNum > 0
     ? isLong
       ? currentPrice * (1 - 0.9 / leverageNum)
       : currentPrice * (1 + 0.9 / leverageNum)
     : 0;
 
-  // Fetch custody available liquidity for this feed
-  // Use lpLiquidity (excludes trader collateral) minus reservedBalance for true LP headroom
+  // Fetch custody available liquidity (only for market-hours trading)
   const custodyAddr = CUSTODY_ADDRESSES[feedId as keyof typeof CUSTODY_ADDRESSES];
   const { data: custodyData } = useReadContracts({
-    contracts: custodyAddr ? [
+    contracts: custodyAddr && !useP2P ? [
       {
         address: custodyAddr as Address,
         abi: CUSTODY_ABI,
@@ -61,7 +63,7 @@ export function OrderPanel({
 
   const lpLiq = custodyData?.[0]?.result as bigint | undefined;
   const reservedBal = custodyData?.[1]?.result as bigint | undefined;
-  const availableLiq = lpLiq !== undefined && reservedBal !== undefined
+  const availableLiq = !useP2P && lpLiq !== undefined && reservedBal !== undefined
     ? Number(formatEther(lpLiq > reservedBal ? lpLiq - reservedBal : 0n))
     : null;
 
@@ -70,12 +72,10 @@ export function OrderPanel({
   const handleApproveAndOpen = async () => {
     if (!address || collateralNum <= 0) return;
 
-    const useP2P = !isMarketOpen;
     const targetContract = useP2P ? CONTRACTS.p2pTrading : CONTRACTS.trading;
     if (!targetContract) return;
 
     const collateralWei = parseEther(collateral);
-    const leverageWei = parseEther(leverage);
 
     // Step 1: Approve
     const approved = await execute(
@@ -90,18 +90,19 @@ export function OrderPanel({
 
     if (!approved) return;
 
-    // Step 2: Open position (P2P or direct)
+    // Step 2: Open position
     if (useP2P) {
       await execute(
         {
           address: CONTRACTS.p2pTrading as Address,
           abi: P2P_TRADING_ABI,
           functionName: "openP2PPosition",
-          args: [feedId, isLong, collateralWei, leverageWei],
+          args: [feedId, isLong, collateralWei],
         },
-        `Opening P2P ${isLong ? "Long" : "Short"} $${notional.toFixed(0)}`
+        `Opening P2P Spot ${isLong ? "Long" : "Short"} $${collateralNum.toFixed(0)}`
       );
     } else {
+      const leverageWei = parseEther(leverage);
       await execute(
         {
           address: CONTRACTS.trading as Address,
@@ -117,7 +118,7 @@ export function OrderPanel({
   return (
     <div className="flex flex-col flex-1 space-y-4">
       <h3 className="text-sm font-pixel font-bold uppercase tracking-wider" style={{ color: "var(--muted-text)" }}>
-        {isMarketOpen ? "Open Position" : "P2P Position"}
+        {isMarketOpen ? "Open Position" : "P2P Spot Position"}
       </h3>
 
       {/* Long/Short Toggle */}
@@ -171,27 +172,38 @@ export function OrderPanel({
         />
       </div>
 
-      {/* Leverage Slider */}
-      <div>
-        <label className="block text-xs font-pixel mb-1 font-semibold uppercase tracking-wider" style={{ color: "var(--dim-text)" }}>
-          Leverage: <span style={{ color: "var(--pixel-yellow)" }}>{leverage}x</span>
-        </label>
-        <input
-          type="range"
-          min="1"
-          max="100"
-          value={leverage}
-          onChange={(e) => setLeverage(e.target.value)}
-          className="w-full"
-        />
-        <div className="relative text-xs text-gray-500 h-4">
-          <span className="absolute left-0">1x</span>
-          <span className="absolute left-1/4 -translate-x-1/2">25x</span>
-          <span className="absolute left-1/2 -translate-x-1/2">50x</span>
-          <span className="absolute left-3/4 -translate-x-1/2">75x</span>
-          <span className="absolute right-0">100x</span>
+      {/* Leverage Slider — hidden in P2P mode */}
+      {useP2P ? (
+        <div>
+          <label className="block text-xs font-pixel mb-1 font-semibold uppercase tracking-wider" style={{ color: "var(--dim-text)" }}>
+            Mode: <span className="text-purple-400">Spot (1:1)</span>
+          </label>
+          <div className="text-xs font-pixel px-2 py-1.5 rounded-lg" style={{ color: "var(--dim-text)", background: "rgba(168, 85, 247, 0.08)", border: "1px solid rgba(168, 85, 247, 0.15)" }}>
+            No leverage — position size equals collateral
+          </div>
         </div>
-      </div>
+      ) : (
+        <div>
+          <label className="block text-xs font-pixel mb-1 font-semibold uppercase tracking-wider" style={{ color: "var(--dim-text)" }}>
+            Leverage: <span style={{ color: "var(--pixel-yellow)" }}>{leverage}x</span>
+          </label>
+          <input
+            type="range"
+            min="1"
+            max="100"
+            value={leverage}
+            onChange={(e) => setLeverage(e.target.value)}
+            className="w-full"
+          />
+          <div className="relative text-xs text-gray-500 h-4">
+            <span className="absolute left-0">1x</span>
+            <span className="absolute left-1/4 -translate-x-1/2">25x</span>
+            <span className="absolute left-1/2 -translate-x-1/2">50x</span>
+            <span className="absolute left-3/4 -translate-x-1/2">75x</span>
+            <span className="absolute right-0">100x</span>
+          </div>
+        </div>
+      )}
 
       {/* Order Summary */}
       <div
@@ -214,12 +226,14 @@ export function OrderPanel({
           <span className="text-xs font-pixel" style={{ color: "var(--dim-text)" }}>Open Fee (0.1%)</span>
           <span className="font-body text-xs" style={{ color: "var(--soft-white)" }}>${openFee.toFixed(2)}</span>
         </div>
-        <div className="flex justify-between">
-          <span className="text-xs font-pixel" style={{ color: "var(--dim-text)" }}>Liq. Price</span>
-          <span className="font-body text-xs" style={{ color: "var(--arcade-orange)" }}>
-            {liqPrice > 0 ? `$${liqPrice.toFixed(2)}` : "\u2014"}
-          </span>
-        </div>
+        {!useP2P && (
+          <div className="flex justify-between">
+            <span className="text-xs font-pixel" style={{ color: "var(--dim-text)" }}>Liq. Price</span>
+            <span className="font-body text-xs" style={{ color: "var(--arcade-orange)" }}>
+              {liqPrice > 0 ? `$${liqPrice.toFixed(2)}` : "\u2014"}
+            </span>
+          </div>
+        )}
         {availableLiq !== null && (
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-1.5">
@@ -233,7 +247,7 @@ export function OrderPanel({
             </span>
           </div>
         )}
-        {feePercent >= 5 && (
+        {!useP2P && feePercent >= 5 && (
           <div className="text-[10px] mt-1 px-2 py-1 rounded-lg font-pixel" style={{ color: "var(--arcade-orange)", background: "rgba(255, 138, 0, 0.08)" }}>
             ⚠ Open+close fees = {(feePercent * 2).toFixed(1)}% of collateral at {leverage}x
           </div>
@@ -277,7 +291,9 @@ export function OrderPanel({
             ? "Confirming..."
             : exceedsLiquidity
               ? "Insufficient Liquidity"
-              : `${isMarketOpen ? "" : "P2P "}${isLong ? "▲ Long" : "▼ Short"} ${sizeUsd.toFixed(0)} USD`}
+              : useP2P
+                ? `P2P ${isLong ? "▲ Long" : "▼ Short"} $${collateralNum.toFixed(0)} Spot`
+                : `${isLong ? "▲ Long" : "▼ Short"} ${sizeUsd.toFixed(0)} USD`}
       </button>
     </div>
   );

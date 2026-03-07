@@ -42,6 +42,12 @@ contract Custody is ICustody, OwnableUpgradeable, UUPSUpgradeable, ReentrancyGua
     uint256 public maxBaseFeePerHourBps;
     uint256 public maxFundingRatePerHourBps;
 
+    event TradingUpdated(address indexed oldTrading, address indexed newTrading);
+    event P2PTradingUpdated(address indexed oldP2PTrading, address indexed newP2PTrading);
+    event FeeManagerUpdated(address indexed oldFeeManager, address indexed newFeeManager);
+    event MaxBaseFeeUpdated(uint256 newMaxBaseFeePerHourBps);
+    event MaxFundingRateUpdated(uint256 newMaxFundingRatePerHourBps);
+
     modifier onlyPool() {
         require(msg.sender == pool, "Custody: not pool");
         _;
@@ -67,6 +73,7 @@ contract Custody is ICustody, OwnableUpgradeable, UUPSUpgradeable, ReentrancyGua
     ) external initializer {
         __Ownable_init(owner_);
 
+        require(pool_ != address(0), "Custody: zero pool address");
         feedId = feedId_;
         usdc = IERC20(usdc_);
         pool = pool_;
@@ -198,23 +205,31 @@ contract Custody is ICustody, OwnableUpgradeable, UUPSUpgradeable, ReentrancyGua
 
     // Admin setters
     function setTrading(address trading_) external onlyOwner {
+        require(trading_ != address(0), "Custody: zero address");
+        emit TradingUpdated(trading, trading_);
         trading = trading_;
     }
 
     function setP2PTrading(address p2pTrading_) external onlyOwner {
+        require(p2pTrading_ != address(0), "Custody: zero address");
+        emit P2PTradingUpdated(p2pTrading, p2pTrading_);
         p2pTrading = p2pTrading_;
     }
 
     function setFeeManager(address feeManager_) external onlyOwner {
+        require(feeManager_ != address(0), "Custody: zero address");
+        emit FeeManagerUpdated(feeManager, feeManager_);
         feeManager = feeManager_;
     }
 
     function setMaxBaseFeePerHourBps(uint256 bps) external onlyOwner {
         maxBaseFeePerHourBps = bps;
+        emit MaxBaseFeeUpdated(bps);
     }
 
     function setMaxFundingRatePerHourBps(uint256 bps) external onlyOwner {
         maxFundingRatePerHourBps = bps;
+        emit MaxFundingRateUpdated(bps);
     }
 
     function _authorizeUpgrade(address) internal override onlyOwner {}

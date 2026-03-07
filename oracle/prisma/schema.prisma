@@ -12,6 +12,7 @@ model PriceTick {
   feedId    Int
   price     Decimal  @db.Decimal(78, 0)
   fresh     Boolean
+  source    String   @default("oracle")
   timestamp DateTime
 
   @@index([feedId, timestamp])
@@ -26,6 +27,7 @@ model Candle {
   low       Decimal  @db.Decimal(78, 0)
   close     Decimal  @db.Decimal(78, 0)
   volume    Decimal  @db.Decimal(78, 0) @default(0)
+  source    String   @default("oracle")
   timestamp DateTime
 
   @@unique([feedId, interval, timestamp])

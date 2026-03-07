@@ -128,6 +128,7 @@ contract Oracle is IOracle, OwnableUpgradeable, UUPSUpgradeable, PausableUpgrade
 
     /// @notice Admin: update staleness threshold
     function setStalenessThreshold(uint256 threshold) external onlyOwner {
+        emit StalenessThresholdUpdated(stalenessThreshold, threshold);
         stalenessThreshold = threshold;
     }
 

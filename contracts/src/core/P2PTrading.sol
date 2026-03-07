@@ -36,7 +36,6 @@ contract P2PTrading is IP2PTrading, OwnableUpgradeable, UUPSUpgradeable, Pausabl
     uint256 public positionCounter;
 
     // Config
-    uint256 public maxLeverage;
     uint256 public minPositionUsd;
     uint256 public minPositionOpenTime;
 
@@ -44,6 +43,8 @@ contract P2PTrading is IP2PTrading, OwnableUpgradeable, UUPSUpgradeable, Pausabl
     mapping(uint16 => bytes32[]) public feedPositionIds;
 
     address public settlementKeeper;
+
+    event SettlementKeeperUpdated(address indexed oldKeeper, address indexed newKeeper);
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -57,7 +58,6 @@ contract P2PTrading is IP2PTrading, OwnableUpgradeable, UUPSUpgradeable, Pausabl
         address pool_,
         address marketState_,
         address feeManager_,
-        uint256 maxLeverage_,
         uint256 minPositionUsd_,
         uint256 minPositionOpenTime_
     ) external initializer {
@@ -69,29 +69,25 @@ contract P2PTrading is IP2PTrading, OwnableUpgradeable, UUPSUpgradeable, Pausabl
         pool = Pool(pool_);
         marketState = MarketState(marketState_);
         feeManager = FeeManager(feeManager_);
-        maxLeverage = maxLeverage_;
         minPositionUsd = minPositionUsd_;
         minPositionOpenTime = minPositionOpenTime_;
     }
 
-    /// @notice Open a P2P position during off-hours
+    /// @notice Open a P2P spot position during off-hours (no leverage)
     function openP2PPosition(
         uint16 feedId,
         bool isLong,
-        uint256 collateral,
-        uint256 leverage
+        uint256 collateral
     ) external nonReentrant whenNotPaused {
         require(!marketState.isMarketOpen(feedId), "P2P: market is open");
-        require(leverage >= 1e18 && leverage <= maxLeverage, "P2P: invalid leverage");
 
-        // Calculate and deduct open fee from collateral BEFORE computing size
-        // This ensures sizeUsd = collateralAfterFee * leverage (exact leverage, no silent bump)
-        uint256 prelimSize = collateral.mulFp(leverage);
-        uint256 openFee = feeManager.calculateOpenCloseFee(prelimSize);
+        // Pure spot: position size = collateral (no leverage)
+        uint256 prelimSize = collateral;
+        uint256 openFee = feeManager.calculateP2POpenCloseFee(prelimSize);
         require(collateral > openFee, "P2P: fee exceeds collateral");
         uint256 collateralAfterFee = collateral - openFee;
-        uint256 sizeUsd = collateralAfterFee.mulFp(leverage);
-        require(sizeUsd >= minPositionUsd, "P2P: below min size");
+        uint256 sizeUsd = collateralAfterFee;
+        require(collateralAfterFee >= minPositionUsd, "P2P: below min size");
 
         // Transfer collateral to this contract (P2P escrow)
         usdc.safeTransferFrom(msg.sender, address(this), collateral);
@@ -147,8 +143,8 @@ contract P2PTrading is IP2PTrading, OwnableUpgradeable, UUPSUpgradeable, Pausabl
         // Calculate PnL at VAMM price
         (uint256 pnl, bool isProfit) = _calculateP2PPnL(pos, currentPrice);
 
-        // Close fee
-        uint256 closeFee = feeManager.calculateOpenCloseFee(pos.sizeUsd);
+        // Close fee (P2P rate)
+        uint256 closeFee = feeManager.calculateP2POpenCloseFee(pos.sizeUsd);
 
         // Calculate payout
         uint256 payout;
@@ -291,7 +287,8 @@ contract P2PTrading is IP2PTrading, OwnableUpgradeable, UUPSUpgradeable, Pausabl
         P2PPosition storage pos,
         uint256 price
     ) internal view returns (uint256 pnl, bool isProfit) {
-        uint256 leverage = pos.sizeUsd.divFp(pos.collateral);
+        // Pure spot PnL: sizeUsd == collateral, so pnl = collateral * priceChange%
+        // No leverage-based cap — profit capped only by escrow in close/settle
         if (pos.isLong) {
             if (price >= pos.entryPrice) {
                 isProfit = true;
@@ -308,11 +305,6 @@ contract P2PTrading is IP2PTrading, OwnableUpgradeable, UUPSUpgradeable, Pausabl
                 isProfit = false;
                 pnl = FixedPointMath.mulDiv(pos.sizeUsd, price - pos.entryPrice, pos.entryPrice);
             }
-        }
-        // Cap profit at collateral * leverage
-        if (isProfit) {
-            uint256 maxPnl = pos.collateral.mulFp(leverage);
-            pnl = FixedPointMath.min(pnl, maxPnl);
         }
     }
 
@@ -336,11 +328,9 @@ contract P2PTrading is IP2PTrading, OwnableUpgradeable, UUPSUpgradeable, Pausabl
 
     // Admin
     function setSettlementKeeper(address keeper) external onlyOwner {
+        require(keeper != address(0), "P2P: zero address");
+        emit SettlementKeeperUpdated(settlementKeeper, keeper);
         settlementKeeper = keeper;
-    }
-
-    function setMaxLeverage(uint256 lev) external onlyOwner {
-        maxLeverage = lev;
     }
 
     function pause() external onlyOwner { _pause(); }

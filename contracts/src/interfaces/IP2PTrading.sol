@@ -17,7 +17,7 @@ interface IP2PTrading {
     event P2PPositionClosed(bytes32 indexed positionId, address indexed owner, int256 realizedPnl);
     event P2PBatchSettled(uint16 indexed feedId, uint256 settledCount, uint256 settlementPrice);
 
-    function openP2PPosition(uint16 feedId, bool isLong, uint256 collateral, uint256 leverage) external;
+    function openP2PPosition(uint16 feedId, bool isLong, uint256 collateral) external;
     function closeP2PPosition(bytes32 positionId) external;
     function settleP2PBatch(bytes32[] calldata positionIds, uint256 settlementPrice) external;
 }

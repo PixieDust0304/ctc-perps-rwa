@@ -13,11 +13,14 @@ export function MarketStatusBanner({ feedId, fresh }: MarketStatusBannerProps) {
   if (fresh) return null;
 
   return (
-    <div className="bg-amber-900/50 border-b border-amber-700 px-4 py-2 text-center text-sm">
+    <div className="bg-amber-900/50 border-b border-amber-700 px-4 py-2.5 text-center text-sm">
       <span className="text-amber-200">
         {feed?.name ?? "Market"} is currently{" "}
-        <strong>CLOSED</strong> — P2P trading mode active. Prices from VAMM,
-        not oracle. Positions settle at market open.
+        <strong>CLOSED</strong> — Spot P2P Trading Active.{" "}
+        You are trading against <strong>other traders</strong>, not the pool.
+        All PnL is settled within the collective escrow of open positions.{" "}
+        Prices reflect VAMM (virtual), not live oracle.
+        Close anytime at VAMM price or hold for oracle settlement at market open.
       </span>
     </div>
   );

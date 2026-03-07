@@ -1,11 +1,39 @@
 import { createPublicClient, http, type Hex } from "viem";
 import { config } from "../config/index.js";
 import { creditcoinLocal } from "../config/chains.js";
-import { TradingABI, P2PTradingABI } from "../abi/index.js";
+import { TradingABI, P2PTradingABI, VAMMABI } from "../abi/index.js";
 import { logger } from "../utils/logger.js";
 import { getPrisma, persistPosition, updatePositionStatus, updatePositionCollateral, queryPositionsByType } from "../services/database.js";
-import { broadcastPositionUpdate } from "../services/websocketServer.js";
+import { broadcastPositionUpdate, broadcastVammPrices } from "../services/websocketServer.js";
+import { storePriceTicks } from "../services/priceStore.js";
 import type { Position, P2PPosition } from "../types/index.js";
+
+async function emitVammPrice(feedId: number): Promise<void> {
+  if (!config.vammAddress) return;
+  try {
+    const client = getPublicClient();
+    const vammPrice = await client.readContract({
+      address: config.vammAddress as Hex,
+      abi: VAMMABI,
+      functionName: "getVAMMPrice",
+      args: [feedId],
+    }) as bigint;
+    const now = Date.now();
+    // Broadcast for live WebSocket clients
+    broadcastVammPrices([{ feedId, price: vammPrice.toString(), timestamp: now }]);
+    // Persist to DB + candles so VAMM price movements survive page changes
+    storePriceTicks([{
+      feedId,
+      price: vammPrice,
+      rawPrice: vammPrice,
+      timestamp: now,
+      fresh: false,
+      source: "vamm",
+    }]);
+  } catch {
+    // VAMM not active or read failed
+  }
+}
 
 const openPositions = new Map<Hex, Position>();
 const openP2PPositions = new Map<Hex, P2PPosition>();
@@ -466,6 +494,7 @@ export function startWatching(): void {
           addP2PPosition(args, log.transactionHash);
           const pos = openP2PPositions.get(args.positionId)!;
           broadcastPositionUpdate("opened", "p2p", serializePosition(pos));
+          emitVammPrice(args.feedId);
           logger.info("PositionTracker", `P2P position opened: ${args.positionId} feed=${args.feedId}`);
         }
       },
@@ -479,6 +508,7 @@ export function startWatching(): void {
         for (const log of logs) {
           const args = log.args as { positionId: Hex; realizedPnl: bigint };
           const pos = openP2PPositions.get(args.positionId);
+          const closedFeedId = pos?.feedId;
           openP2PPositions.delete(args.positionId);
           updatePositionStatus(args.positionId, "settled", args.realizedPnl?.toString(), log.transactionHash ?? undefined);
           broadcastPositionUpdate("settled", "p2p", {
@@ -486,6 +516,7 @@ export function startWatching(): void {
             realizedPnl: args.realizedPnl?.toString(),
             ...(pos ? serializePosition(pos) : {}),
           });
+          if (closedFeedId !== undefined) emitVammPrice(closedFeedId);
           logger.info("PositionTracker", `P2P position closed: ${args.positionId}`);
         }
       },

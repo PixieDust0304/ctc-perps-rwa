@@ -20,6 +20,10 @@ contract VAMM is IVAMM, OwnableUpgradeable, UUPSUpgradeable {
     address public p2pTrading;
     address public keeper;
 
+    event MarketStateUpdated(address indexed oldMarketState, address indexed newMarketState);
+    event P2PTradingUpdated(address indexed oldP2PTrading, address indexed newP2PTrading);
+    event KeeperUpdated(address indexed oldKeeper, address indexed newKeeper);
+
     modifier onlyAuthorized() {
         require(
             msg.sender == owner() || msg.sender == marketState || msg.sender == p2pTrading || msg.sender == keeper,
@@ -132,19 +136,25 @@ contract VAMM is IVAMM, OwnableUpgradeable, UUPSUpgradeable {
     }
 
     // Admin
-    function setDepthMultiplier(uint16 feedId, uint256 multiplier) external onlyOwner {
+    function setDepthMultiplier(uint16 feedId, uint256 multiplier) external onlyAuthorized {
         depthMultiplier[feedId] = multiplier;
     }
 
     function setMarketState(address ms) external onlyOwner {
+        require(ms != address(0), "VAMM: zero address");
+        emit MarketStateUpdated(marketState, ms);
         marketState = ms;
     }
 
     function setP2PTrading(address p2p) external onlyOwner {
+        require(p2p != address(0), "VAMM: zero address");
+        emit P2PTradingUpdated(p2pTrading, p2p);
         p2pTrading = p2p;
     }
 
     function setKeeper(address keeper_) external onlyOwner {
+        require(keeper_ != address(0), "VAMM: zero address");
+        emit KeeperUpdated(keeper, keeper_);
         keeper = keeper_;
     }
 

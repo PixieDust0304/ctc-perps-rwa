@@ -17,8 +17,15 @@ export interface PositionUpdate {
 
 type PositionCallback = (update: PositionUpdate) => void;
 
+export interface VammPriceUpdate {
+  feedId: number;
+  price: string;
+  timestamp: number;
+}
+
 export function useWebSocket(url: string = "ws://localhost:8080") {
   const [prices, setPrices] = useState<Record<number, PriceUpdate>>({});
+  const [vammPrices, setVammPrices] = useState<Record<number, VammPriceUpdate>>({});
   const [connected, setConnected] = useState(false);
   const positionCallbacksRef = useRef<Set<PositionCallback>>(new Set());
   const wsRef = useRef<WebSocket | null>(null);
@@ -64,6 +71,15 @@ export function useWebSocket(url: string = "ws://localhost:8080") {
               }
               return next;
             });
+          } else if (msg.type === "vammPrice") {
+            const updates = msg.data as VammPriceUpdate[];
+            setVammPrices((prev) => {
+              const next = { ...prev };
+              for (const u of updates) {
+                next[u.feedId] = u;
+              }
+              return next;
+            });
           } else if (msg.type === "position") {
             const update = msg.data as PositionUpdate;
             for (const cb of positionCallbacksRef.current) {
@@ -85,5 +101,5 @@ export function useWebSocket(url: string = "ws://localhost:8080") {
     };
   }, [url]);
 
-  return { prices, connected, onPositionUpdate };
+  return { prices, vammPrices, connected, onPositionUpdate };
 }

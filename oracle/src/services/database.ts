@@ -45,6 +45,7 @@ export async function persistPriceTicks(ticks: PriceTick[]): Promise<void> {
         feedId: t.feedId,
         price: t.price.toString(),
         fresh: t.fresh,
+        source: t.source ?? "oracle",
         timestamp: new Date(t.timestamp),
       })),
     });
@@ -73,6 +74,7 @@ export async function persistCandle(candle: CandleData): Promise<void> {
         low: candle.low,
         close: candle.close,
         volume: candle.volume,
+        source: candle.source ?? "oracle",
       },
       create: {
         feedId: candle.feedId,
@@ -82,6 +84,7 @@ export async function persistCandle(candle: CandleData): Promise<void> {
         low: candle.low,
         close: candle.close,
         volume: candle.volume,
+        source: candle.source ?? "oracle",
         timestamp: new Date(candle.timestamp),
       },
     });
@@ -115,6 +118,7 @@ export async function queryCandles(
       low: r.low.toString(),
       close: r.close.toString(),
       volume: r.volume?.toString() ?? "0",
+      source: r.source ?? "oracle",
       timestamp: r.timestamp.getTime(),
     }));
   } catch (err) {

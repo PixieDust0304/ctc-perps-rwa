@@ -20,7 +20,7 @@ contract P2PTradingTest is TestSetup {
 
     uint256 constant GOLD_RAW = 30377000000000;
     uint256 constant GOLD_PRICE = 3037.7e18;
-    uint256 constant VAMM_DEPTH = 13_000_000e18; // $13M virtual depth for gold
+    uint256 constant VAMM_DEPTH = 150_000e18; // ~30% of custody LP liquidity
 
     function setUp() public override {
         super.setUp();
@@ -46,7 +46,7 @@ contract P2PTradingTest is TestSetup {
         FeeManager fmImpl = new FeeManager();
         feeManager = FeeManager(address(new ERC1967Proxy(
             address(fmImpl),
-            abi.encodeCall(FeeManager.initialize, (admin, 10, 5, 5, 9000))
+            abi.encodeCall(FeeManager.initialize, (admin, 10, 5, 5, 9000, 10))
         )));
 
         // Deploy MarketState
@@ -76,7 +76,6 @@ contract P2PTradingTest is TestSetup {
                 address(pool),
                 address(marketState),
                 address(feeManager),
-                100e18,  // maxLeverage
                 10e18,   // minPositionUsd
                 120      // minPositionOpenTime
             ))
@@ -116,11 +115,11 @@ contract P2PTradingTest is TestSetup {
     function test_openP2PPosition_long() public {
         vm.startPrank(user2);
         usdc.approve(address(p2pTrading), 1000e18);
-        p2pTrading.openP2PPosition(GOLD_FEED, true, 1000e18, 10e18);
+        p2pTrading.openP2PPosition(GOLD_FEED, true, 1000e18);
         vm.stopPrank();
 
-        // sizeUsd = collateralAfterFee * leverage = 990 * 10 = 9900
-        assertEq(p2pTrading.p2pLongOI(GOLD_FEED), 9_900e18);
+        // Spot: sizeUsd = collateralAfterFee = 1000 - 1 (0.1% of 1000) = 999
+        assertEq(p2pTrading.p2pLongOI(GOLD_FEED), 999e18);
     }
 
     function test_openP2PPosition_rejectsOpenMarket() public {
@@ -131,7 +130,7 @@ contract P2PTradingTest is TestSetup {
         vm.startPrank(user2);
         usdc.approve(address(p2pTrading), 1000e18);
         vm.expectRevert("P2P: market is open");
-        p2pTrading.openP2PPosition(GOLD_FEED, true, 1000e18, 10e18);
+        p2pTrading.openP2PPosition(GOLD_FEED, true, 1000e18);
         vm.stopPrank();
     }
 
@@ -141,7 +140,7 @@ contract P2PTradingTest is TestSetup {
         // Open large long — should push price up
         vm.startPrank(user2);
         usdc.approve(address(p2pTrading), 100_000e18);
-        p2pTrading.openP2PPosition(GOLD_FEED, true, 100_000e18, 10e18);
+        p2pTrading.openP2PPosition(GOLD_FEED, true, 100_000e18);
         vm.stopPrank();
 
         uint256 priceAfter = vamm.getVAMMPrice(GOLD_FEED);
@@ -152,7 +151,7 @@ contract P2PTradingTest is TestSetup {
         // Open long
         vm.startPrank(user2);
         usdc.approve(address(p2pTrading), 1000e18);
-        p2pTrading.openP2PPosition(GOLD_FEED, true, 1000e18, 10e18);
+        p2pTrading.openP2PPosition(GOLD_FEED, true, 1000e18);
         vm.stopPrank();
 
         bytes32 posId = keccak256(abi.encodePacked(user2, uint256(1), "p2p"));
@@ -172,7 +171,7 @@ contract P2PTradingTest is TestSetup {
     function test_closeP2PPosition_rejectsMinTime() public {
         vm.startPrank(user2);
         usdc.approve(address(p2pTrading), 1000e18);
-        p2pTrading.openP2PPosition(GOLD_FEED, true, 1000e18, 10e18);
+        p2pTrading.openP2PPosition(GOLD_FEED, true, 1000e18);
 
         bytes32 posId = keccak256(abi.encodePacked(user2, uint256(1), "p2p"));
 
@@ -185,12 +184,12 @@ contract P2PTradingTest is TestSetup {
         // Open long (user2) and short (user3) positions
         vm.startPrank(user2);
         usdc.approve(address(p2pTrading), 1000e18);
-        p2pTrading.openP2PPosition(GOLD_FEED, true, 1000e18, 10e18);
+        p2pTrading.openP2PPosition(GOLD_FEED, true, 1000e18);
         vm.stopPrank();
 
         vm.startPrank(user3);
         usdc.approve(address(p2pTrading), 1000e18);
-        p2pTrading.openP2PPosition(GOLD_FEED, false, 1000e18, 10e18);
+        p2pTrading.openP2PPosition(GOLD_FEED, false, 1000e18);
         vm.stopPrank();
 
         bytes32 posId1 = keccak256(abi.encodePacked(user2, uint256(1), "p2p"));

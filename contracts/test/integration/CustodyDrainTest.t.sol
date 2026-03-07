@@ -43,7 +43,7 @@ contract CustodyDrainTest is TestSetup {
         FeeManager fmImpl = new FeeManager();
         feeManager = FeeManager(address(new ERC1967Proxy(
             address(fmImpl),
-            abi.encodeCall(FeeManager.initialize, (admin, 10, 5, 5, 9000))
+            abi.encodeCall(FeeManager.initialize, (admin, 10, 5, 5, 9000, 10))
         )));
 
         MarketState msImpl = new MarketState();

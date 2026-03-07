@@ -55,7 +55,7 @@ contract P2PHandler {
         vm.startPrank(actor);
         usdc.approve(address(p2pTrading), amount);
         uint256 counterBefore = p2pTrading.positionCounter();
-        try p2pTrading.openP2PPosition(feedId, true, amount, 5e18) {
+        try p2pTrading.openP2PPosition(feedId, true, amount) {
             totalCollateralIn += amount;
             openPositionCount++;
             bytes32 posId = keccak256(abi.encodePacked(actor, counterBefore + 1, "p2p"));
@@ -72,7 +72,7 @@ contract P2PHandler {
         vm.startPrank(actor);
         usdc.approve(address(p2pTrading), amount);
         uint256 counterBefore = p2pTrading.positionCounter();
-        try p2pTrading.openP2PPosition(feedId, false, amount, 5e18) {
+        try p2pTrading.openP2PPosition(feedId, false, amount) {
             totalCollateralIn += amount;
             openPositionCount++;
             bytes32 posId = keccak256(abi.encodePacked(actor, counterBefore + 1, "p2p"));
@@ -142,7 +142,7 @@ contract P2PInvariantTest is TestSetup {
         FeeManager fmImpl = new FeeManager();
         feeManager = FeeManager(address(new ERC1967Proxy(
             address(fmImpl),
-            abi.encodeCall(FeeManager.initialize, (admin, 10, 5, 5, 9000))
+            abi.encodeCall(FeeManager.initialize, (admin, 10, 5, 5, 9000, 10))
         )));
 
         MarketState msImpl = new MarketState();
@@ -158,7 +158,6 @@ contract P2PInvariantTest is TestSetup {
             abi.encodeCall(VAMM.initialize, (admin))
         )));
         vamm.setDepthMultiplier(GOLD_FEED, 1e24);
-        vamm.setP2PTrading(address(p2pTrading));
 
         P2PTrading p2pImpl = new P2PTrading();
         p2pTrading = P2PTrading(address(new ERC1967Proxy(
@@ -166,9 +165,10 @@ contract P2PInvariantTest is TestSetup {
             abi.encodeCall(P2PTrading.initialize, (
                 admin, address(usdc), address(vamm), address(pool),
                 address(marketState), address(feeManager),
-                100e18, 10e18, 120
+                10e18, 120
             ))
         )));
+        vamm.setP2PTrading(address(p2pTrading));
         pool.setP2PTrading(address(p2pTrading));
 
         vm.stopPrank();
@@ -222,8 +222,8 @@ contract P2PInvariantTest is TestSetup {
         uint256 longOI = p2pTrading.p2pLongOI(GOLD_FEED);
         uint256 shortOI = p2pTrading.p2pShortOI(GOLD_FEED);
 
-        // OI should be bounded by total collateral * max leverage
-        assertLe(longOI, handler.totalCollateralIn() * 100, "Long OI bounded");
-        assertLe(shortOI, handler.totalCollateralIn() * 100, "Short OI bounded");
+        // OI should be bounded by total collateral (spot, no leverage)
+        assertLe(longOI, handler.totalCollateralIn(), "Long OI bounded");
+        assertLe(shortOI, handler.totalCollateralIn(), "Short OI bounded");
     }
 }

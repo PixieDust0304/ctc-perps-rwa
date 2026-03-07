@@ -1,7 +1,7 @@
 import { createPublicClient, http, type Hex } from "viem";
 import { config } from "../config/index.js";
 import { creditcoinLocal } from "../config/chains.js";
-import { P2PTradingABI, OracleABI, MarketStateABI, VAMMABI } from "../abi/index.js";
+import { P2PTradingABI, OracleABI, MarketStateABI, VAMMABI, CustodyABI } from "../abi/index.js";
 import { getWalletClient } from "../utils/signing.js";
 import { getLatestPrice } from "../services/priceStore.js";
 import { logger } from "../utils/logger.js";
@@ -50,6 +50,38 @@ async function initializeVAMMForFeed(feedId: number): Promise<void> {
   if (!lastPrice || lastPrice.price === 0n) {
     logger.warn("P2PSettlement", `No price available to initialize VAMM for feed ${feedId}`);
     return;
+  }
+
+  // Dynamic depth: read custody LP liquidity, calculate depth = max(lpLiq * bps / 10000, minDepth)
+  const custodyAddr = config.custodyAddresses[feedId];
+  if (custodyAddr) {
+    try {
+      const publicClient = createPublicClient({
+        chain: creditcoinLocal,
+        transport: http(config.rpcUrl),
+      });
+      const lpLiq = await publicClient.readContract({
+        address: custodyAddr as Hex,
+        abi: CustodyABI,
+        functionName: "lpLiquidity",
+      }) as bigint;
+      const minDepth = BigInt(config.vammMinDepth);
+      const calculatedDepth = lpLiq * BigInt(config.vammDepthBps) / 10000n;
+      const depth = calculatedDepth > minDepth ? calculatedDepth : minDepth;
+
+      const walletClient = getWalletClient();
+      const { request } = await publicClient.simulateContract({
+        address: config.vammAddress as Hex,
+        abi: VAMMABI,
+        functionName: "setDepthMultiplier",
+        args: [feedId, depth],
+        account: walletClient.account,
+      });
+      const txHash = await walletClient.writeContract(request);
+      logger.info("P2PSettlement", `VAMM depth set for feed ${feedId}: $${Number(depth) / 1e18} (lpLiq=$${Number(lpLiq) / 1e18}), tx: ${txHash}`);
+    } catch (err) {
+      logger.warn("P2PSettlement", `Dynamic depth failed for feed ${feedId}, using existing: ${(err as Error).message}`);
+    }
   }
 
   await retry(
