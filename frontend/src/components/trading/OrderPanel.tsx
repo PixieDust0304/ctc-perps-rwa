@@ -127,8 +127,8 @@ export function OrderPanel({
           onClick={() => setIsLong(true)}
           className={`py-2.5 rounded-xl font-pixel font-bold text-sm transition-all ${isLong ? "text-black" : "text-gray-400 hover:text-gray-200"}`}
           style={isLong ? {
-            background: "linear-gradient(135deg, var(--pixel-yellow), var(--arcade-orange))",
-            boxShadow: "0 4px 12px var(--pixel-yellow-glow), inset 0 1px 0 rgba(255,255,255,0.3)",
+            background: "linear-gradient(135deg, #00E676, #00C853)",
+            boxShadow: "0 4px 12px rgba(0, 230, 118, 0.3), inset 0 1px 0 rgba(255,255,255,0.3)",
           } : {
             background: "var(--coal-lighter)",
             border: "1px solid var(--coal-border)",
@@ -167,7 +167,7 @@ export function OrderPanel({
             border: "1px solid var(--coal-border)",
             boxShadow: "inset 0 2px 4px rgba(0,0,0,0.3)",
           }}
-          onFocus={(e) => { e.target.style.borderColor = "rgba(255, 212, 0, 0.3)"; e.target.style.boxShadow = "inset 0 2px 4px rgba(0,0,0,0.3), 0 0 0 2px rgba(255, 212, 0, 0.08)"; }}
+          onFocus={(e) => { e.target.style.borderColor = isLong ? "rgba(0, 230, 118, 0.3)" : "rgba(255, 23, 68, 0.3)"; e.target.style.boxShadow = `inset 0 2px 4px rgba(0,0,0,0.3), 0 0 0 2px ${isLong ? "rgba(0, 230, 118, 0.08)" : "rgba(255, 23, 68, 0.08)"}`; }}
           onBlur={(e) => { e.target.style.borderColor = "var(--coal-border)"; e.target.style.boxShadow = "inset 0 2px 4px rgba(0,0,0,0.3)"; }}
         />
       </div>
@@ -185,7 +185,7 @@ export function OrderPanel({
       ) : (
         <div>
           <label className="block text-xs font-pixel mb-1 font-semibold uppercase tracking-wider" style={{ color: "var(--dim-text)" }}>
-            Leverage: <span style={{ color: "var(--pixel-yellow)" }}>{leverage}x</span>
+            Leverage: <span style={{ color: isLong ? "#00E676" : "var(--trade-red)" }}>{leverage}x</span>
           </label>
           <input
             type="range"
@@ -237,7 +237,7 @@ export function OrderPanel({
         {availableLiq !== null && (
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-1.5">
-              <span style={{ color: "var(--pixel-yellow)" }}>
+              <span style={{ color: "var(--profit-green)" }}>
                 <IconDollar size={12} />
               </span>
               <span className="text-xs font-pixel" style={{ color: "var(--dim-text)" }}>Avail. Liquidity</span>
@@ -273,15 +273,15 @@ export function OrderPanel({
         style={{
           background: isLong
             ? (!isConnected || isPending || collateralNum <= 0 || exceedsLiquidity)
-              ? "#3d3200"
-              : "linear-gradient(135deg, var(--pixel-yellow), var(--arcade-orange))"
+              ? "#0a3d1a"
+              : "linear-gradient(135deg, #00E676, #00C853)"
             : (!isConnected || isPending || collateralNum <= 0 || exceedsLiquidity)
               ? "#4a0000"
               : "linear-gradient(135deg, var(--trade-red), #D50000)",
           boxShadow: (!isConnected || isPending || collateralNum <= 0 || exceedsLiquidity)
             ? "none"
             : isLong
-              ? "0 4px 16px var(--pixel-yellow-glow), inset 0 1px 0 rgba(255,255,255,0.2)"
+              ? "0 4px 16px rgba(0, 230, 118, 0.3), inset 0 1px 0 rgba(255,255,255,0.2)"
               : "0 4px 16px var(--trade-red-glow), inset 0 1px 0 rgba(255,255,255,0.1)",
         }}
       >

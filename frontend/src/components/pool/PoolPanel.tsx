@@ -116,38 +116,47 @@ export function PoolPanel() {
   };
 
   return (
-    <div className="max-w-lg mx-auto space-y-6">
+    <div className="max-w-lg mx-auto space-y-5">
       {/* Pool Stats */}
-      <div className="bg-gray-900 rounded-lg p-6">
-        <h2 className="text-xl font-bold text-white mb-4">Liquidity Pool</h2>
-        <div className="grid grid-cols-2 gap-4">
+      <div
+        className="rounded-xl p-6"
+        style={{
+          background: "linear-gradient(160deg, var(--coal-surface) 0%, var(--void-black) 100%)",
+          border: "1px solid var(--coal-border)",
+          boxShadow: "0 4px 24px rgba(0, 0, 0, 0.4)",
+        }}
+      >
+        <h2 className="text-lg font-pixel font-bold uppercase tracking-wider mb-5" style={{ color: "var(--pixel-yellow)" }}>
+          Liquidity Pool
+        </h2>
+        <div className="grid grid-cols-2 gap-5">
           <div>
-            <p className="text-sm text-gray-400">Total Pool TVL</p>
-            <p className="text-xl font-mono text-white">
+            <p className="text-xs font-pixel uppercase tracking-wider mb-1" style={{ color: "var(--muted-text)" }}>Total Pool TVL</p>
+            <p className="text-xl font-mono font-bold" style={{ color: "var(--soft-white)" }}>
               ${poolTvl.toLocaleString(undefined, { maximumFractionDigits: 0 })}
             </p>
           </div>
           <div>
-            <p className="text-sm text-gray-400">CLP Supply</p>
-            <p className="text-xl font-mono text-white">
+            <p className="text-xs font-pixel uppercase tracking-wider mb-1" style={{ color: "var(--muted-text)" }}>CLP Supply</p>
+            <p className="text-xl font-mono font-bold" style={{ color: "var(--soft-white)" }}>
               {totalClp.toLocaleString(undefined, { maximumFractionDigits: 0 })}
             </p>
           </div>
           <div>
-            <p className="text-sm text-gray-400">Your CLP Balance</p>
-            <p className="text-xl font-mono text-white">
+            <p className="text-xs font-pixel uppercase tracking-wider mb-1" style={{ color: "var(--muted-text)" }}>Your CLP Balance</p>
+            <p className="text-xl font-mono font-bold" style={{ color: "#A855F7" }}>
               {userClp.toLocaleString(undefined, { maximumFractionDigits: 2 })}
             </p>
           </div>
           <div>
-            <p className="text-sm text-gray-400">Your Pool Share</p>
-            <p className="text-xl font-mono text-white">
+            <p className="text-xs font-pixel uppercase tracking-wider mb-1" style={{ color: "var(--muted-text)" }}>Your Pool Share</p>
+            <p className="text-xl font-mono font-bold" style={{ color: "#A855F7" }}>
               {sharePercent.toFixed(2)}%
             </p>
           </div>
-          <div className="col-span-2">
-            <p className="text-sm text-gray-400">Your Pool Value</p>
-            <p className="text-2xl font-mono text-white">
+          <div className="col-span-2 pt-2" style={{ borderTop: "1px solid var(--coal-border)" }}>
+            <p className="text-xs font-pixel uppercase tracking-wider mb-1" style={{ color: "var(--muted-text)" }}>Your Pool Value</p>
+            <p className="text-2xl font-mono font-bold" style={{ color: "var(--pixel-yellow)", textShadow: "0 0 12px var(--pixel-yellow-glow)" }}>
               ${userPoolValue.toLocaleString(undefined, { maximumFractionDigits: 2 })}
             </p>
           </div>
@@ -155,25 +164,42 @@ export function PoolPanel() {
       </div>
 
       {/* Deposit / Withdraw */}
-      <div className="bg-gray-900 rounded-lg p-6">
-        <div className="grid grid-cols-2 gap-2 mb-4">
+      <div
+        className="rounded-xl p-6"
+        style={{
+          background: "linear-gradient(160deg, var(--coal-surface) 0%, var(--void-black) 100%)",
+          border: "1px solid var(--coal-border)",
+          boxShadow: "0 4px 24px rgba(0, 0, 0, 0.4)",
+        }}
+      >
+        <div className="grid grid-cols-2 gap-2 mb-5">
           <button
             onClick={() => setActiveTab("deposit")}
-            className={`py-2 rounded-lg font-medium transition-colors ${
-              activeTab === "deposit"
-                ? "bg-blue-600 text-white"
-                : "bg-gray-800 text-gray-400 hover:bg-gray-700"
-            }`}
+            className="py-2.5 rounded-xl font-pixel font-bold text-sm transition-all"
+            style={activeTab === "deposit" ? {
+              background: "linear-gradient(135deg, var(--pixel-yellow), var(--arcade-orange))",
+              color: "#000",
+              boxShadow: "0 4px 12px var(--pixel-yellow-glow), inset 0 1px 0 rgba(255,255,255,0.3)",
+            } : {
+              background: "var(--coal-lighter)",
+              border: "1px solid var(--coal-border)",
+              color: "var(--muted-text)",
+            }}
           >
             Deposit
           </button>
           <button
             onClick={() => setActiveTab("withdraw")}
-            className={`py-2 rounded-lg font-medium transition-colors ${
-              activeTab === "withdraw"
-                ? "bg-blue-600 text-white"
-                : "bg-gray-800 text-gray-400 hover:bg-gray-700"
-            }`}
+            className="py-2.5 rounded-xl font-pixel font-bold text-sm transition-all"
+            style={activeTab === "withdraw" ? {
+              background: "linear-gradient(135deg, #A855F7, #7C3AED)",
+              color: "#fff",
+              boxShadow: "0 4px 12px rgba(168, 85, 247, 0.3), inset 0 1px 0 rgba(255,255,255,0.15)",
+            } : {
+              background: "var(--coal-lighter)",
+              border: "1px solid var(--coal-border)",
+              color: "var(--muted-text)",
+            }}
           >
             Withdraw
           </button>
@@ -182,22 +208,35 @@ export function PoolPanel() {
         {activeTab === "deposit" ? (
           <div className="space-y-3">
             <div>
-              <div className="flex justify-between text-sm text-gray-400 mb-1">
+              <div className="flex justify-between text-xs font-pixel uppercase tracking-wider mb-1.5" style={{ color: "var(--dim-text)" }}>
                 <span>Amount (USDC)</span>
-                <span>Balance: {userUsdc.toFixed(2)}</span>
+                <span style={{ color: "var(--muted-text)" }}>Balance: {userUsdc.toFixed(2)}</span>
               </div>
               <input
                 type="number"
                 value={depositAmount}
                 onChange={(e) => setDepositAmount(e.target.value)}
                 placeholder="10000"
-                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white"
+                className="w-full rounded-xl px-3 py-2.5 text-white font-body text-sm outline-none transition-all"
+                style={{
+                  background: "var(--void-black)",
+                  border: "1px solid var(--coal-border)",
+                  boxShadow: "inset 0 2px 4px rgba(0,0,0,0.3)",
+                }}
               />
             </div>
             <button
               onClick={handleDeposit}
               disabled={!isConnected || isPending || !depositAmount}
-              className="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-900 disabled:opacity-50 rounded-lg font-medium text-white transition-colors"
+              className="w-full py-3 rounded-xl font-pixel font-bold text-sm text-black transition-all disabled:opacity-40 disabled:cursor-not-allowed hover:brightness-110"
+              style={{
+                background: (!isConnected || isPending || !depositAmount)
+                  ? "#3d3200"
+                  : "linear-gradient(135deg, var(--pixel-yellow), var(--arcade-orange))",
+                boxShadow: (!isConnected || isPending || !depositAmount)
+                  ? "none"
+                  : "0 4px 16px var(--pixel-yellow-glow), inset 0 1px 0 rgba(255,255,255,0.2)",
+              }}
             >
               {!isConnected
                 ? "Connect Wallet"
@@ -209,22 +248,35 @@ export function PoolPanel() {
         ) : (
           <div className="space-y-3">
             <div>
-              <div className="flex justify-between text-sm text-gray-400 mb-1">
+              <div className="flex justify-between text-xs font-pixel uppercase tracking-wider mb-1.5" style={{ color: "var(--dim-text)" }}>
                 <span>Amount (CLP)</span>
-                <span>Balance: {userClp.toFixed(2)}</span>
+                <span style={{ color: "var(--muted-text)" }}>Balance: {userClp.toFixed(2)}</span>
               </div>
               <input
                 type="number"
                 value={withdrawAmount}
                 onChange={(e) => setWithdrawAmount(e.target.value)}
                 placeholder="1000"
-                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white"
+                className="w-full rounded-xl px-3 py-2.5 text-white font-body text-sm outline-none transition-all"
+                style={{
+                  background: "var(--void-black)",
+                  border: "1px solid var(--coal-border)",
+                  boxShadow: "inset 0 2px 4px rgba(0,0,0,0.3)",
+                }}
               />
             </div>
             <button
               onClick={handleWithdraw}
               disabled={!isConnected || isPending || !withdrawAmount}
-              className="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-900 disabled:opacity-50 rounded-lg font-medium text-white transition-colors"
+              className="w-full py-3 rounded-xl font-pixel font-bold text-sm text-white transition-all disabled:opacity-40 disabled:cursor-not-allowed hover:brightness-110"
+              style={{
+                background: (!isConnected || isPending || !withdrawAmount)
+                  ? "#2d1a4e"
+                  : "linear-gradient(135deg, #A855F7, #7C3AED)",
+                boxShadow: (!isConnected || isPending || !withdrawAmount)
+                  ? "none"
+                  : "0 4px 16px rgba(168, 85, 247, 0.3), inset 0 1px 0 rgba(255,255,255,0.15)",
+              }}
             >
               {!isConnected
                 ? "Connect Wallet"

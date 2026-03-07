@@ -280,34 +280,45 @@ export function GovernancePanel() {
     : 0;
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
+    <div className="max-w-2xl mx-auto space-y-5">
       {/* Header */}
-      <div className="bg-gray-900 rounded-lg p-6">
+      <div
+        className="rounded-xl p-6"
+        style={{
+          background: "linear-gradient(160deg, var(--coal-surface) 0%, var(--void-black) 100%)",
+          border: "1px solid var(--coal-border)",
+          boxShadow: "0 4px 24px rgba(0, 0, 0, 0.4)",
+        }}
+      >
         <div className="flex items-center justify-between mb-2">
-          <h2 className="text-xl font-bold text-white">Governance</h2>
+          <h2 className="text-lg font-pixel font-bold uppercase tracking-wider" style={{ color: "var(--pixel-yellow)" }}>Governance</h2>
           {isConnected && (
             <button
               onClick={() => setShowCreateForm(!showCreateForm)}
-              className="px-4 py-1.5 bg-blue-700 hover:bg-blue-600 text-white text-sm rounded"
+              className="px-4 py-1.5 rounded-xl font-pixel font-bold text-sm text-black transition-all hover:brightness-110"
+              style={{
+                background: "linear-gradient(135deg, var(--pixel-yellow), var(--arcade-orange))",
+                boxShadow: "0 4px 12px var(--pixel-yellow-glow), inset 0 1px 0 rgba(255,255,255,0.3)",
+              }}
             >
               {showCreateForm ? "Cancel" : "New Proposal"}
             </button>
           )}
         </div>
-        <p className="text-sm text-gray-400">
+        <p className="text-xs font-pixel" style={{ color: "var(--muted-text)" }}>
           Vote on protocol changes with CPERP tokens
         </p>
         {isConnected && (
-          <div className="mt-3 flex gap-6">
+          <div className="mt-4 flex gap-8">
             <div>
-              <p className="text-xs text-gray-500">Your Voting Power</p>
-              <p className="text-lg font-mono text-white">
-                {votingPower.toLocaleString()} CPERP
+              <p className="text-xs font-pixel uppercase tracking-wider mb-1" style={{ color: "var(--muted-text)" }}>Your Voting Power</p>
+              <p className="text-lg font-mono font-bold" style={{ color: "#A855F7" }}>
+                {votingPower.toLocaleString()} <span className="text-xs" style={{ color: "var(--muted-text)" }}>CPERP</span>
               </p>
             </div>
             <div>
-              <p className="text-xs text-gray-500">Active Proposals</p>
-              <p className="text-lg font-mono text-white">
+              <p className="text-xs font-pixel uppercase tracking-wider mb-1" style={{ color: "var(--muted-text)" }}>Active Proposals</p>
+              <p className="text-lg font-mono font-bold" style={{ color: "var(--pixel-yellow)" }}>
                 {proposals.filter((p) => p.deadline > now && !p.executed).length}
               </p>
             </div>
@@ -317,19 +328,44 @@ export function GovernancePanel() {
 
       {/* Create Proposal Form */}
       {showCreateForm && isConnected && (
-        <div className="bg-gray-900 rounded-lg p-6 border border-blue-800">
-          <h3 className="text-lg font-bold text-white mb-4">Create Proposal</h3>
+        <div
+          className="rounded-xl p-6"
+          style={{
+            background: "linear-gradient(160deg, var(--coal-surface) 0%, var(--void-black) 100%)",
+            border: "1px solid rgba(168, 85, 247, 0.2)",
+            boxShadow: "0 4px 24px rgba(0, 0, 0, 0.4), 0 0 20px rgba(168, 85, 247, 0.05)",
+          }}
+        >
+          <h3 className="text-sm font-pixel font-bold uppercase tracking-wider mb-4" style={{ color: "#A855F7" }}>Create Proposal</h3>
 
           <div className="flex gap-2 mb-4">
             <button
               onClick={() => setUseCustom(false)}
-              className={`px-3 py-1 text-sm rounded ${!useCustom ? "bg-blue-700 text-white" : "bg-gray-800 text-gray-400"}`}
+              className="px-3 py-1.5 rounded-lg font-pixel text-xs font-bold transition-all"
+              style={!useCustom ? {
+                background: "linear-gradient(135deg, #A855F7, #7C3AED)",
+                color: "#fff",
+                boxShadow: "0 2px 8px rgba(168, 85, 247, 0.3)",
+              } : {
+                background: "var(--coal-lighter)",
+                border: "1px solid var(--coal-border)",
+                color: "var(--muted-text)",
+              }}
             >
               Preset Actions
             </button>
             <button
               onClick={() => setUseCustom(true)}
-              className={`px-3 py-1 text-sm rounded ${useCustom ? "bg-blue-700 text-white" : "bg-gray-800 text-gray-400"}`}
+              className="px-3 py-1.5 rounded-lg font-pixel text-xs font-bold transition-all"
+              style={useCustom ? {
+                background: "linear-gradient(135deg, #A855F7, #7C3AED)",
+                color: "#fff",
+                boxShadow: "0 2px 8px rgba(168, 85, 247, 0.3)",
+              } : {
+                background: "var(--coal-lighter)",
+                border: "1px solid var(--coal-border)",
+                color: "var(--muted-text)",
+              }}
             >
               Custom Calldata
             </button>
@@ -338,14 +374,19 @@ export function GovernancePanel() {
           {!useCustom ? (
             <div className="space-y-3">
               <div>
-                <label className="text-xs text-gray-500 block mb-1">Action</label>
+                <label className="text-xs font-pixel uppercase tracking-wider block mb-1" style={{ color: "var(--dim-text)" }}>Action</label>
                 <select
                   value={selectedPreset}
                   onChange={(e) => {
                     setSelectedPreset(Number(e.target.value));
                     setParamValue("");
                   }}
-                  className="w-full bg-gray-800 text-white rounded px-3 py-2 text-sm border border-gray-700"
+                  className="w-full rounded-xl px-3 py-2.5 text-white font-body text-sm outline-none"
+                  style={{
+                    background: "var(--void-black)",
+                    border: "1px solid var(--coal-border)",
+                    boxShadow: "inset 0 2px 4px rgba(0,0,0,0.3)",
+                  }}
                 >
                   {PRESET_ACTIONS.map((action, i) => (
                     <option key={i} value={i}>{action.label}</option>
@@ -355,7 +396,7 @@ export function GovernancePanel() {
 
               {PRESET_ACTIONS[selectedPreset].paramLabel && (
                 <div>
-                  <label className="text-xs text-gray-500 block mb-1">
+                  <label className="text-xs font-pixel uppercase tracking-wider block mb-1" style={{ color: "var(--dim-text)" }}>
                     {PRESET_ACTIONS[selectedPreset].paramLabel}
                   </label>
                   <input
@@ -363,37 +404,52 @@ export function GovernancePanel() {
                     value={paramValue}
                     onChange={(e) => setParamValue(e.target.value)}
                     placeholder="Enter value"
-                    className="w-full bg-gray-800 text-white rounded px-3 py-2 text-sm border border-gray-700"
+                    className="w-full rounded-xl px-3 py-2.5 text-white font-body text-sm outline-none"
+                    style={{
+                      background: "var(--void-black)",
+                      border: "1px solid var(--coal-border)",
+                      boxShadow: "inset 0 2px 4px rgba(0,0,0,0.3)",
+                    }}
                   />
                 </div>
               )}
 
-              <div className="text-xs text-gray-500">
+              <div className="text-xs font-pixel" style={{ color: "var(--dim-text)" }}>
                 Target: {PRESET_ACTIONS[selectedPreset].target()
-                  ? `${PRESET_ACTIONS[selectedPreset].target().slice(0, 6)}...${PRESET_ACTIONS[selectedPreset].target().slice(-4)}`
+                  ? <span style={{ color: "#A855F7" }}>{`${PRESET_ACTIONS[selectedPreset].target().slice(0, 6)}...${PRESET_ACTIONS[selectedPreset].target().slice(-4)}`}</span>
                   : "Not configured"}
               </div>
             </div>
           ) : (
             <div className="space-y-3">
               <div>
-                <label className="text-xs text-gray-500 block mb-1">Target Address</label>
+                <label className="text-xs font-pixel uppercase tracking-wider block mb-1" style={{ color: "var(--dim-text)" }}>Target Address</label>
                 <input
                   type="text"
                   value={customTarget}
                   onChange={(e) => setCustomTarget(e.target.value)}
                   placeholder="0x..."
-                  className="w-full bg-gray-800 text-white rounded px-3 py-2 text-sm font-mono border border-gray-700"
+                  className="w-full rounded-xl px-3 py-2.5 text-white font-mono text-sm outline-none"
+                  style={{
+                    background: "var(--void-black)",
+                    border: "1px solid var(--coal-border)",
+                    boxShadow: "inset 0 2px 4px rgba(0,0,0,0.3)",
+                  }}
                 />
               </div>
               <div>
-                <label className="text-xs text-gray-500 block mb-1">Calldata (hex)</label>
+                <label className="text-xs font-pixel uppercase tracking-wider block mb-1" style={{ color: "var(--dim-text)" }}>Calldata (hex)</label>
                 <input
                   type="text"
                   value={customCalldata}
                   onChange={(e) => setCustomCalldata(e.target.value)}
                   placeholder="0x..."
-                  className="w-full bg-gray-800 text-white rounded px-3 py-2 text-sm font-mono border border-gray-700"
+                  className="w-full rounded-xl px-3 py-2.5 text-white font-mono text-sm outline-none"
+                  style={{
+                    background: "var(--void-black)",
+                    border: "1px solid var(--coal-border)",
+                    boxShadow: "inset 0 2px 4px rgba(0,0,0,0.3)",
+                  }}
                 />
               </div>
             </div>
@@ -402,7 +458,11 @@ export function GovernancePanel() {
           <button
             onClick={handlePropose}
             disabled={isPending || (!useCustom && PRESET_ACTIONS[selectedPreset].paramLabel && !paramValue) || (useCustom && (!customTarget || !customCalldata))}
-            className="w-full mt-4 py-2 bg-blue-700 hover:bg-blue-600 text-white text-sm font-medium rounded disabled:opacity-50"
+            className="w-full mt-4 py-2.5 rounded-xl font-pixel font-bold text-sm text-white transition-all disabled:opacity-40 disabled:cursor-not-allowed hover:brightness-110"
+            style={{
+              background: isPending ? "#2d1a4e" : "linear-gradient(135deg, #A855F7, #7C3AED)",
+              boxShadow: isPending ? "none" : "0 4px 16px rgba(168, 85, 247, 0.3), inset 0 1px 0 rgba(255,255,255,0.15)",
+            }}
           >
             {isPending ? "Submitting..." : "Submit Proposal"}
           </button>
@@ -412,7 +472,14 @@ export function GovernancePanel() {
       {/* Proposals */}
       <div className="space-y-3">
         {proposals.length === 0 ? (
-          <div className="bg-gray-900 rounded-lg p-6 text-center text-gray-500">
+          <div
+            className="rounded-xl p-6 text-center font-pixel text-sm"
+            style={{
+              background: "linear-gradient(160deg, var(--coal-surface) 0%, var(--void-black) 100%)",
+              border: "1px solid var(--coal-border)",
+              color: "var(--muted-text)",
+            }}
+          >
             No proposals yet
           </div>
         ) : (
@@ -426,20 +493,29 @@ export function GovernancePanel() {
                 : 0;
 
             return (
-              <div key={p.id} className="bg-gray-900 rounded-lg p-4">
+              <div
+                key={p.id}
+                className="rounded-xl p-4"
+                style={{
+                  background: "linear-gradient(160deg, var(--coal-surface) 0%, var(--void-black) 100%)",
+                  border: `1px solid ${isActive ? "rgba(168, 85, 247, 0.15)" : "var(--coal-border)"}`,
+                  boxShadow: "0 4px 24px rgba(0, 0, 0, 0.4)",
+                }}
+              >
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
-                    <span className="text-white font-medium">
+                    <span className="font-pixel font-bold text-sm" style={{ color: "var(--soft-white)" }}>
                       Proposal #{p.id}
                     </span>
                     <span
-                      className={`text-xs px-2 py-0.5 rounded ${
+                      className="text-[10px] font-pixel font-bold px-2 py-0.5 rounded-lg uppercase"
+                      style={
                         p.executed
-                          ? "bg-green-900 text-green-400"
+                          ? { background: "rgba(0, 230, 118, 0.1)", color: "#00E676", border: "1px solid rgba(0, 230, 118, 0.2)" }
                           : isActive
-                            ? "bg-blue-900 text-blue-400"
-                            : "bg-gray-800 text-gray-400"
-                      }`}
+                            ? { background: "rgba(168, 85, 247, 0.1)", color: "#A855F7", border: "1px solid rgba(168, 85, 247, 0.2)" }
+                            : { background: "var(--coal-lighter)", color: "var(--muted-text)", border: "1px solid var(--coal-border)" }
+                      }
                     >
                       {p.executed
                         ? "Executed"
@@ -448,26 +524,30 @@ export function GovernancePanel() {
                           : "Ended"}
                     </span>
                   </div>
-                  <span className="text-xs text-gray-500">
-                    Target: {p.target.slice(0, 6)}...{p.target.slice(-4)}
+                  <span className="text-[10px] font-mono" style={{ color: "var(--dim-text)" }}>
+                    {p.target.slice(0, 6)}...{p.target.slice(-4)}
                   </span>
                 </div>
 
                 {/* Vote bar */}
                 <div className="mb-2">
-                  <div className="flex justify-between text-xs text-gray-400 mb-1">
+                  <div className="flex justify-between text-[10px] font-pixel uppercase mb-1" style={{ color: "var(--muted-text)" }}>
                     <span>
-                      For: {(Number(p.forVotes) / 1e18).toLocaleString()}
+                      For: <span style={{ color: "var(--pixel-yellow)" }}>{(Number(p.forVotes) / 1e18).toLocaleString()}</span>
                     </span>
                     <span>
                       Against:{" "}
-                      {(Number(p.againstVotes) / 1e18).toLocaleString()}
+                      <span style={{ color: "var(--trade-red, #FF1744)" }}>{(Number(p.againstVotes) / 1e18).toLocaleString()}</span>
                     </span>
                   </div>
-                  <div className="w-full bg-gray-800 rounded-full h-2">
+                  <div className="w-full rounded-full h-2" style={{ background: "var(--coal-lighter)" }}>
                     <div
-                      className="bg-green-500 h-2 rounded-full"
-                      style={{ width: `${forPercent}%` }}
+                      className="h-2 rounded-full"
+                      style={{
+                        width: `${forPercent}%`,
+                        background: "linear-gradient(90deg, var(--pixel-yellow), var(--arcade-orange))",
+                        boxShadow: forPercent > 0 ? "0 0 8px var(--pixel-yellow-glow)" : "none",
+                      }}
                     />
                   </div>
                 </div>
@@ -478,14 +558,22 @@ export function GovernancePanel() {
                     <button
                       onClick={() => handleVote(p.id, true)}
                       disabled={isPending}
-                      className="flex-1 py-1.5 bg-green-700 hover:bg-green-600 text-white text-sm rounded disabled:opacity-50"
+                      className="flex-1 py-1.5 rounded-lg font-pixel font-bold text-xs text-black transition-all disabled:opacity-50 hover:brightness-110"
+                      style={{
+                        background: "linear-gradient(135deg, var(--pixel-yellow), var(--arcade-orange))",
+                        boxShadow: "0 2px 8px var(--pixel-yellow-glow)",
+                      }}
                     >
                       Vote For
                     </button>
                     <button
                       onClick={() => handleVote(p.id, false)}
                       disabled={isPending}
-                      className="flex-1 py-1.5 bg-red-700 hover:bg-red-600 text-white text-sm rounded disabled:opacity-50"
+                      className="flex-1 py-1.5 rounded-lg font-pixel font-bold text-xs text-white transition-all disabled:opacity-50 hover:brightness-110"
+                      style={{
+                        background: "linear-gradient(135deg, #FF1744, #D50000)",
+                        boxShadow: "0 2px 8px rgba(255, 23, 68, 0.3)",
+                      }}
                     >
                       Vote Against
                     </button>
@@ -495,7 +583,11 @@ export function GovernancePanel() {
                   <button
                     onClick={() => handleExecute(p.id)}
                     disabled={isPending}
-                    className="w-full mt-3 py-1.5 bg-blue-700 hover:bg-blue-600 text-white text-sm rounded disabled:opacity-50"
+                    className="w-full mt-3 py-1.5 rounded-lg font-pixel font-bold text-xs text-white transition-all disabled:opacity-50 hover:brightness-110"
+                    style={{
+                      background: "linear-gradient(135deg, #A855F7, #7C3AED)",
+                      boxShadow: "0 2px 8px rgba(168, 85, 247, 0.3)",
+                    }}
                   >
                     Execute
                   </button>
