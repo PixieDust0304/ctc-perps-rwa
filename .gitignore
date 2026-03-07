@@ -17,6 +17,9 @@ dist/
 .env.*
 !.env.example
 
+# ---- Deployed addresses (local, regenerated each run) ----
+.addresses.json
+
 # ---- OS / IDE ----
 .DS_Store
 .vscode/
