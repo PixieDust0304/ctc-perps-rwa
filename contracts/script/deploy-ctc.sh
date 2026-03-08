@@ -48,7 +48,7 @@ echo ""
 COMMON="--rpc-url $RPC_URL --private-key $PK --legacy"
 # CTC gas estimation is unreliable — use block gas limit (75M) as failsafe.
 # Unused gas is not charged; only actual consumption counts.
-SEND_COMMON="--rpc-url $RPC_URL --private-key $PK --legacy --gas-limit 75000000"
+SEND_COMMON="--rpc-url $RPC_URL --private-key $PK --legacy --gas-limit 5000000"
 
 log() { echo "[$(date +%H:%M:%S)] $1"; }
 
