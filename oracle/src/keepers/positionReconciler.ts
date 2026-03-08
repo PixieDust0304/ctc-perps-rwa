@@ -59,8 +59,8 @@ export async function reconcile(): Promise<void> {
             args: [positionId as Hex],
           });
 
-          const data = result as { owner: Hex; collateral: bigint };
-          if (data.owner === ZERO_ADDRESS || data.collateral === 0n) {
+          const data = result as { owner: Hex; collateral: bigint; isSettled: boolean };
+          if (data.owner === ZERO_ADDRESS || data.collateral === 0n || data.isSettled) {
             await updatePositionStatus(positionId, "settled");
             fixed++;
             logger.info("Reconciler", `Fixed stale P2P position: ${positionId}`);
@@ -178,9 +178,9 @@ export async function reconcile(): Promise<void> {
             abi: P2PTradingABI,
             functionName: "positions",
             args: [args.positionId],
-          })) as { owner: Hex; collateral: bigint };
+          })) as { owner: Hex; collateral: bigint; isSettled: boolean };
 
-          if (onChain.owner !== ZERO_ADDRESS && onChain.collateral !== 0n) {
+          if (onChain.owner !== ZERO_ADDRESS && onChain.collateral !== 0n && !onChain.isSettled) {
             await persistPosition({
               positionId: args.positionId,
               type: "p2p",

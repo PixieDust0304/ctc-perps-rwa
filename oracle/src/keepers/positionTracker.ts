@@ -548,6 +548,285 @@ export function startWatching(): void {
   }
 
   logger.info("PositionTracker", "Watching for real-time position events (Trading + P2P)");
+
+  // Start getLogs-based polling fallback (CTC drops eth_newFilter filters in ~5s)
+  startLogPolling();
+}
+
+const LOG_POLL_INTERVAL = 3_000;
+let lastProcessedBlock = 0n;
+
+async function startLogPolling(): Promise<void> {
+  const client = getPublicClient();
+
+  try {
+    lastProcessedBlock = await client.getBlockNumber();
+  } catch {
+    logger.warn("PositionTracker", "Failed to get initial block number for log polling");
+    return;
+  }
+
+  logger.info("PositionTracker", `Log polling fallback started from block ${lastProcessedBlock}`);
+
+  const poll = async () => {
+    try {
+      const currentBlock = await client.getBlockNumber();
+      if (currentBlock <= lastProcessedBlock) return;
+
+      const fromBlock = lastProcessedBlock + 1n;
+      const toBlock = currentBlock;
+
+      // Trading events
+      if (config.tradingAddress) {
+        const tradingAddr = config.tradingAddress as Hex;
+
+        const openedLogs = await client.getLogs({
+          address: tradingAddr,
+          event: {
+            type: "event",
+            name: "PositionOpened",
+            inputs: [
+              { name: "positionId", type: "bytes32", indexed: true },
+              { name: "owner", type: "address", indexed: true },
+              { name: "feedId", type: "uint16", indexed: false },
+              { name: "isLong", type: "bool", indexed: false },
+              { name: "collateral", type: "uint256", indexed: false },
+              { name: "sizeUsd", type: "uint256", indexed: false },
+              { name: "entryPrice", type: "uint256", indexed: false },
+            ],
+          },
+          fromBlock,
+          toBlock,
+        });
+
+        for (const log of openedLogs) {
+          const args = log.args as {
+            positionId: Hex;
+            owner: Hex;
+            feedId: number;
+            isLong: boolean;
+            collateral: bigint;
+            sizeUsd: bigint;
+            entryPrice: bigint;
+          };
+          if (openPositions.has(args.positionId)) continue;
+          addTradingPosition(args, log.transactionHash);
+          const pos = openPositions.get(args.positionId)!;
+          broadcastPositionUpdate("opened", "trading", serializePosition(pos));
+          logger.info("PositionTracker", `[poll] Position opened: ${args.positionId} feed=${args.feedId}`);
+        }
+
+        const closedLogs = await client.getLogs({
+          address: tradingAddr,
+          event: {
+            type: "event",
+            name: "PositionClosed",
+            inputs: [
+              { name: "positionId", type: "bytes32", indexed: true },
+              { name: "owner", type: "address", indexed: true },
+              { name: "realizedPnl", type: "int256", indexed: false },
+            ],
+          },
+          fromBlock,
+          toBlock,
+        });
+
+        for (const log of closedLogs) {
+          const args = log.args as { positionId: Hex; realizedPnl: bigint };
+          if (!openPositions.has(args.positionId)) continue;
+          const pos = openPositions.get(args.positionId);
+          openPositions.delete(args.positionId);
+          updatePositionStatus(args.positionId, "closed", args.realizedPnl?.toString(), log.transactionHash ?? undefined);
+          broadcastPositionUpdate("closed", "trading", {
+            positionId: args.positionId,
+            realizedPnl: args.realizedPnl?.toString(),
+            ...(pos ? serializePosition(pos) : {}),
+          });
+          logger.info("PositionTracker", `[poll] Position closed: ${args.positionId}`);
+        }
+
+        const liquidatedLogs = await client.getLogs({
+          address: tradingAddr,
+          event: {
+            type: "event",
+            name: "PositionLiquidated",
+            inputs: [
+              { name: "positionId", type: "bytes32", indexed: true },
+              { name: "owner", type: "address", indexed: true },
+              { name: "liquidator", type: "address", indexed: false },
+            ],
+          },
+          fromBlock,
+          toBlock,
+        });
+
+        for (const log of liquidatedLogs) {
+          const args = log.args as { positionId: Hex };
+          if (!openPositions.has(args.positionId)) continue;
+          const pos = openPositions.get(args.positionId);
+          openPositions.delete(args.positionId);
+          updatePositionStatus(args.positionId, "liquidated", undefined, log.transactionHash ?? undefined);
+          broadcastPositionUpdate("liquidated", "trading", {
+            positionId: args.positionId,
+            ...(pos ? serializePosition(pos) : {}),
+          });
+          logger.info("PositionTracker", `[poll] Position liquidated: ${args.positionId}`);
+        }
+
+        const collateralLogs = await client.getLogs({
+          address: tradingAddr,
+          event: {
+            type: "event",
+            name: "CollateralAdded",
+            inputs: [
+              { name: "positionId", type: "bytes32", indexed: true },
+              { name: "owner", type: "address", indexed: true },
+              { name: "amount", type: "uint256", indexed: false },
+              { name: "newCollateral", type: "uint256", indexed: false },
+            ],
+          },
+          fromBlock,
+          toBlock,
+        });
+
+        for (const log of collateralLogs) {
+          const args = log.args as {
+            positionId: Hex;
+            owner: Hex;
+            amount: bigint;
+            newCollateral: bigint;
+          };
+          const pos = openPositions.get(args.positionId);
+          if (pos) {
+            pos.collateral = args.newCollateral;
+          }
+          updatePositionCollateral(args.positionId, args.newCollateral.toString());
+          broadcastPositionUpdate("collateralAdded", "trading", {
+            positionId: args.positionId,
+            owner: args.owner,
+            amount: args.amount?.toString(),
+            newCollateral: args.newCollateral?.toString(),
+            ...(pos ? serializePosition(pos) : {}),
+          });
+          logger.info("PositionTracker", `[poll] Collateral added to ${args.positionId}: +${args.amount}`);
+        }
+      }
+
+      // P2P events
+      if (config.p2pTradingAddress) {
+        const p2pAddr = config.p2pTradingAddress as Hex;
+
+        const p2pOpenedLogs = await client.getLogs({
+          address: p2pAddr,
+          event: {
+            type: "event",
+            name: "P2PPositionOpened",
+            inputs: [
+              { name: "positionId", type: "bytes32", indexed: true },
+              { name: "owner", type: "address", indexed: true },
+              { name: "feedId", type: "uint16", indexed: false },
+              { name: "isLong", type: "bool", indexed: false },
+              { name: "collateral", type: "uint256", indexed: false },
+              { name: "sizeUsd", type: "uint256", indexed: false },
+              { name: "entryVammPrice", type: "uint256", indexed: false },
+            ],
+          },
+          fromBlock,
+          toBlock,
+        });
+
+        for (const log of p2pOpenedLogs) {
+          const args = log.args as {
+            positionId: Hex;
+            owner: Hex;
+            feedId: number;
+            isLong: boolean;
+            collateral: bigint;
+            sizeUsd: bigint;
+            entryVammPrice: bigint;
+          };
+          if (openP2PPositions.has(args.positionId)) continue;
+          addP2PPosition(args, log.transactionHash);
+          const pos = openP2PPositions.get(args.positionId)!;
+          broadcastPositionUpdate("opened", "p2p", serializePosition(pos));
+          emitVammPrice(args.feedId);
+          logger.info("PositionTracker", `[poll] P2P position opened: ${args.positionId} feed=${args.feedId}`);
+        }
+
+        const p2pClosedLogs = await client.getLogs({
+          address: p2pAddr,
+          event: {
+            type: "event",
+            name: "P2PPositionClosed",
+            inputs: [
+              { name: "positionId", type: "bytes32", indexed: true },
+              { name: "owner", type: "address", indexed: true },
+              { name: "realizedPnl", type: "int256", indexed: false },
+            ],
+          },
+          fromBlock,
+          toBlock,
+        });
+
+        for (const log of p2pClosedLogs) {
+          const args = log.args as { positionId: Hex; realizedPnl: bigint };
+          if (!openP2PPositions.has(args.positionId)) continue;
+          const pos = openP2PPositions.get(args.positionId);
+          const closedFeedId = pos?.feedId;
+          openP2PPositions.delete(args.positionId);
+          updatePositionStatus(args.positionId, "settled", args.realizedPnl?.toString(), log.transactionHash ?? undefined);
+          broadcastPositionUpdate("settled", "p2p", {
+            positionId: args.positionId,
+            realizedPnl: args.realizedPnl?.toString(),
+            ...(pos ? serializePosition(pos) : {}),
+          });
+          if (closedFeedId !== undefined) emitVammPrice(closedFeedId);
+          logger.info("PositionTracker", `[poll] P2P position closed: ${args.positionId}`);
+        }
+
+        const batchSettledLogs = await client.getLogs({
+          address: p2pAddr,
+          event: {
+            type: "event",
+            name: "P2PBatchSettled",
+            inputs: [
+              { name: "feedId", type: "uint16", indexed: true },
+              { name: "settledCount", type: "uint256", indexed: false },
+              { name: "settlementPrice", type: "uint256", indexed: false },
+            ],
+          },
+          fromBlock,
+          toBlock,
+        });
+
+        for (const log of batchSettledLogs) {
+          const args = log.args as { feedId: number; settledCount: bigint; settlementPrice: bigint };
+          let hadPositions = false;
+          for (const [id, pos] of openP2PPositions) {
+            if (pos.feedId === args.feedId) {
+              openP2PPositions.delete(id);
+              updatePositionStatus(id, "settled");
+              hadPositions = true;
+            }
+          }
+          if (hadPositions) {
+            broadcastPositionUpdate("settled", "p2p", {
+              feedId: args.feedId,
+              settledCount: args.settledCount?.toString(),
+              settlementPrice: args.settlementPrice?.toString(),
+            });
+            logger.info("PositionTracker", `[poll] P2P batch settled: feed=${args.feedId} count=${args.settledCount}`);
+          }
+        }
+      }
+
+      lastProcessedBlock = toBlock;
+    } catch (err) {
+      logger.warn("PositionTracker", `Log polling error: ${(err as Error).message}`);
+    }
+  };
+
+  setInterval(poll, LOG_POLL_INTERVAL);
 }
 
 /**

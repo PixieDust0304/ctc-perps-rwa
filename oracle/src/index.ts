@@ -40,11 +40,11 @@ function serializeBigints(obj: object): Record<string, unknown> {
 function serializeRow(row: Record<string, unknown>): Record<string, unknown> {
   const result: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(row)) {
-    if (v !== null && typeof v === "object" && "toString" in v) {
+    if (v instanceof Date) {
+      result[k] = v.toISOString();
+    } else if (v !== null && typeof v === "object" && "toString" in v) {
       // Prisma Decimal
       result[k] = v.toString();
-    } else if (v instanceof Date) {
-      result[k] = v.toISOString();
     } else {
       result[k] = v;
     }
