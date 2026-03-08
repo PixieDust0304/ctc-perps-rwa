@@ -6,7 +6,7 @@ import { logger } from "../utils/logger.js";
 import { getAllOpenPositionIds, updatePositionStatus, persistPosition, getPrisma, logKeeperEvent } from "../services/database.js";
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
-const RECONCILE_BLOCK_LOOKBACK = 1000n;
+const RECONCILE_BLOCK_LOOKBACK = BigInt(process.env.RECONCILE_BLOCK_LOOKBACK || "5000");
 
 /**
  * Reconciliation sweep: verify DB open positions against on-chain state,

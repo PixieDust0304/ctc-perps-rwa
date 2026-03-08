@@ -194,8 +194,10 @@ async function main() {
 
   // Start reconciler: every 30 minutes
   if (getPrisma()) {
-    setInterval(reconcile, 30 * 60 * 1000);
-    logger.info("Main", "Position reconciler scheduled (every 30 min)");
+    const reconcileIntervalMs = Number(process.env.RECONCILE_INTERVAL_MS || "10000");
+    setInterval(reconcile, reconcileIntervalMs);
+    reconcile(); // run immediately on startup
+    logger.info("Main", `Position reconciler scheduled (every ${reconcileIntervalMs / 1000}s)`);
   }
 
   // Start price fetcher with processing pipeline
