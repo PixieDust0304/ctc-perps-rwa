@@ -16,8 +16,11 @@ export async function initDatabase(): Promise<boolean> {
   }
 
   try {
+    const poolSize = process.env.DB_POOL_SIZE || "5";
+    const dbUrl = new URL(config.databaseUrl);
+    dbUrl.searchParams.set("connection_limit", poolSize);
     prisma = new PrismaClient({
-      datasourceUrl: config.databaseUrl,
+      datasourceUrl: dbUrl.toString(),
     });
     await prisma.$connect();
     logger.info("DB", "Prisma connected to PostgreSQL");

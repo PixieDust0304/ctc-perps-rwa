@@ -5,8 +5,24 @@ import { persistPriceTicks, persistCandle, queryCandles, getPrisma } from "./dat
 // In-memory candle store (always active as primary fast path)
 const candles: Map<string, CandleData> = new Map();
 const priceTicks: PriceTick[] = [];
+// Track which candle keys are dirty and need DB flush
+const dirtyCandles: Set<string> = new Set();
 
 const MAX_TICKS = 100_000;
+const CANDLE_FLUSH_INTERVAL_MS = 5_000;
+
+// Periodically flush dirty candles to DB in batch
+setInterval(async () => {
+  if (dirtyCandles.size === 0) return;
+  const keys = [...dirtyCandles];
+  dirtyCandles.clear();
+  for (const key of keys) {
+    const candle = candles.get(key);
+    if (candle) {
+      await persistCandle(candle).catch(() => {});
+    }
+  }
+}, CANDLE_FLUSH_INTERVAL_MS);
 
 /**
  * Store a batch of price ticks
@@ -65,9 +81,8 @@ function updateCandle(tick: PriceTick, interval: string) {
     });
   }
 
-  // Async persist candle to DB
-  const candle = candles.get(key)!;
-  persistCandle(candle).catch(() => {});
+  // Mark candle dirty for periodic batch flush
+  dirtyCandles.add(key);
 }
 
 function intervalToMs(interval: string): number {
