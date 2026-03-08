@@ -65,6 +65,10 @@ export const config = {
   stalenessThresholdMs: 210_000,
   feeInterval: 15,
 
+  // Block time — all chain-dependent intervals derive from this.
+  // Anvil: 1s, CTC Testnet: 15s. Set via BLOCK_TIME_MS env var.
+  blockTimeMs: Number(process.env.BLOCK_TIME_MS || "1000"),
+
   // Market state detection — debounce + cooldown to prevent false transitions from Autonom lags.
   // Close requires high confidence (60 readings × 500ms = 30s of sustained staleness ON TOP of the 210s threshold).
   // Open recovers faster (6 readings × 500ms = 3s) since fresh data is a strong signal.

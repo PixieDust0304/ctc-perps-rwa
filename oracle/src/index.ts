@@ -57,6 +57,7 @@ async function main() {
   logger.info("Main", `Autonom URL: ${config.autonomUrl}`);
   logger.info("Main", `RPC URL: ${config.rpcUrl}`);
   logger.info("Main", `Feed IDs: ${config.feedIds.join(", ")}`);
+  logger.info("Main", `Block time: ${config.blockTimeMs}ms (chain push, log poll, reconciler derive from this)`);
 
   // Initialize database (optional — falls back to in-memory)
   const dbReady = await initDatabase();
@@ -192,12 +193,13 @@ async function main() {
     logger.warn("Main", `Position tracker init failed: ${(err as Error).message}`);
   }
 
-  // Start reconciler: every 30 minutes
+  // Start reconciler: interval derives from block time (at least every 4 blocks, min 10s)
   if (getPrisma()) {
-    const reconcileIntervalMs = Number(process.env.RECONCILE_INTERVAL_MS || "10000");
+    const defaultReconcileMs = Math.max(config.blockTimeMs * 4, 10_000);
+    const reconcileIntervalMs = Number(process.env.RECONCILE_INTERVAL_MS || defaultReconcileMs);
     setInterval(reconcile, reconcileIntervalMs);
     reconcile(); // run immediately on startup
-    logger.info("Main", `Position reconciler scheduled (every ${reconcileIntervalMs / 1000}s)`);
+    logger.info("Main", `Position reconciler scheduled (every ${reconcileIntervalMs / 1000}s, block time ${config.blockTimeMs / 1000}s)`);
   }
 
   // Start price fetcher with processing pipeline
@@ -264,6 +266,10 @@ async function main() {
     // 4. Detect market state changes (after prices are on-chain)
     const stateChanges = detectMarketStateChanges(ticks);
     if (stateChanges.length > 0) {
+      for (const sc of stateChanges) {
+        const feedName = config.feedNames[sc.feedId] || `Feed ${sc.feedId}`;
+        logger.info("Pipeline", `*** MARKET STATE CHANGE: ${feedName} → ${sc.isOpen ? "OPEN" : "CLOSED"} ***`);
+      }
       broadcastMarketState(stateChanges);
 
       // Log market state transitions to DB
@@ -273,7 +279,9 @@ async function main() {
       }
 
       // Handle market state transitions (P2P settlement with coordinator lock)
+      logger.info("Pipeline", `Triggering settlement for ${stateChanges.length} state change(s)`);
       await handleMarketOpenSettlement(stateChanges);
+      logger.info("Pipeline", "Settlement handler returned");
     }
   });
 

@@ -45,7 +45,7 @@ function getPublicClient() {
     publicClient = createPublicClient({
       chain: getChain(),
       transport: http(config.rpcUrl),
-      pollingInterval: 1_000,
+      pollingInterval: config.blockTimeMs,
     });
   }
   return publicClient;
@@ -553,24 +553,28 @@ export function startWatching(): void {
   startLogPolling();
 }
 
+// Aggressive polling — getBlockNumber is cheap, getLogs only fires when a new block exists.
+// On slow chains (15s blocks): 4 no-ops + 1 real poll per block. Fast position detection.
 const LOG_POLL_INTERVAL = 3_000;
 let lastProcessedBlock = 0n;
+let pollInitialized = false;
 
-async function startLogPolling(): Promise<void> {
+function startLogPolling(): void {
   const client = getPublicClient();
 
-  try {
-    lastProcessedBlock = await client.getBlockNumber();
-  } catch {
-    logger.warn("PositionTracker", "Failed to get initial block number for log polling");
-    return;
-  }
-
-  logger.info("PositionTracker", `Log polling fallback started from block ${lastProcessedBlock}`);
+  logger.info("PositionTracker", `Log polling fallback scheduled (${LOG_POLL_INTERVAL / 1000}s interval)`);
 
   const poll = async () => {
     try {
       const currentBlock = await client.getBlockNumber();
+
+      if (!pollInitialized) {
+        lastProcessedBlock = currentBlock;
+        pollInitialized = true;
+        logger.info("PositionTracker", `Log polling initialized at block ${currentBlock}`);
+        return;
+      }
+
       if (currentBlock <= lastProcessedBlock) return;
 
       const fromBlock = lastProcessedBlock + 1n;

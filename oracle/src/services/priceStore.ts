@@ -158,14 +158,28 @@ export async function getCandlesAsync(
   interval: string,
   limit: number = 100
 ): Promise<CandleData[]> {
-  // Try DB first
+  // In-memory candles are always the freshest (updated every tick)
+  const memCandles = getCandlesSync(feedId, interval, limit);
+
+  // Merge with DB history to extend beyond current uptime
   if (getPrisma()) {
-    const dbCandles = await queryCandles(feedId, interval, limit);
-    if (dbCandles.length > 0) return dbCandles;
+    try {
+      const dbCandles = await queryCandles(feedId, interval, limit);
+      if (dbCandles.length > 0) {
+        // Deduplicate by timestamp — in-memory wins on conflicts (more current)
+        const merged = new Map<number, CandleData>();
+        for (const c of dbCandles) merged.set(c.timestamp, c);
+        for (const c of memCandles) merged.set(c.timestamp, c);
+        return Array.from(merged.values())
+          .sort((a, b) => a.timestamp - b.timestamp)
+          .slice(-limit);
+      }
+    } catch {
+      // DB query failed, fall through to in-memory only
+    }
   }
 
-  // Fallback to in-memory
-  return getCandlesSync(feedId, interval, limit);
+  return memCandles;
 }
 
 /**

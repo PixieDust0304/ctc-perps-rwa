@@ -26,11 +26,12 @@ model Candle {
   high      Decimal  @db.Decimal(78, 0)
   low       Decimal  @db.Decimal(78, 0)
   close     Decimal  @db.Decimal(78, 0)
-  volume    Decimal  @db.Decimal(78, 0) @default(0)
+  volume    Decimal  @default(0) @db.Decimal(78, 0)
   source    String   @default("oracle")
   timestamp DateTime
 
   @@unique([feedId, interval, timestamp])
+  @@index([feedId, interval, timestamp(sort: Desc)])
 }
 
 model MarketStateLog {
@@ -54,22 +55,22 @@ model KeeperEvent {
 }
 
 model PositionRecord {
-  positionId  String   @id
+  positionId  String    @id
   type        String
   owner       String
   feedId      Int
   isLong      Boolean
-  collateral  Decimal  @db.Decimal(78, 0)
-  sizeUsd     Decimal  @db.Decimal(78, 0)
-  entryPrice  Decimal  @db.Decimal(78, 0)
-  status      String   @default("open")
-  realizedPnl Decimal? @db.Decimal(78, 0)
+  collateral  Decimal   @db.Decimal(78, 0)
+  sizeUsd     Decimal   @db.Decimal(78, 0)
+  entryPrice  Decimal   @db.Decimal(78, 0)
+  status      String    @default("open")
+  realizedPnl Decimal?  @db.Decimal(78, 0)
   openedAt    DateTime
   closedAt    DateTime?
   txHash      String?
   closeTxHash String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   @@index([owner, status])
   @@index([feedId, status])

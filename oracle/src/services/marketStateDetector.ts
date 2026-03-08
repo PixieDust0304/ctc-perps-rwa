@@ -35,6 +35,7 @@ export function detectMarketStateChanges(ticks: PriceTick[]): MarketStateUpdate[
 
   for (const tick of ticks) {
     let state = feedStates[tick.feedId];
+    const feedName = config.feedNames[tick.feedId] || `Feed ${tick.feedId}`;
 
     // First reading ever — initialize and emit initial state
     if (!state) {
@@ -50,7 +51,6 @@ export function detectMarketStateChanges(ticks: PriceTick[]): MarketStateUpdate[
         isOpen: tick.fresh,
         timestamp: tick.timestamp,
       });
-      const feedName = config.feedNames[tick.feedId] || `Feed ${tick.feedId}`;
       logger.info("MarketState", `${feedName} market ${tick.fresh ? "OPEN" : "CLOSED"} (initial)`);
       continue;
     }
@@ -59,6 +59,12 @@ export function detectMarketStateChanges(ticks: PriceTick[]): MarketStateUpdate[
 
     // If the incoming state matches the CONFIRMED state, reset debounce
     if (incomingState === state.isOpen) {
+      if (state.pendingCount > 0) {
+        logger.info(
+          "MarketState",
+          `${feedName}: reading agrees with confirmed=${state.isOpen ? "OPEN" : "CLOSED"}, resetting debounce (was at ${state.pendingCount})`
+        );
+      }
       state.pendingCount = 0;
       state.pendingState = incomingState;
       continue;
@@ -69,6 +75,10 @@ export function detectMarketStateChanges(ticks: PriceTick[]): MarketStateUpdate[
       state.pendingCount++;
     } else {
       // Direction flipped mid-debounce (noise) — restart counter
+      logger.info(
+        "MarketState",
+        `${feedName}: direction flipped mid-debounce (was counting toward ${state.pendingState ? "OPEN" : "CLOSED"} at ${state.pendingCount}), restarting toward ${incomingState ? "OPEN" : "CLOSED"}`
+      );
       state.pendingState = incomingState;
       state.pendingCount = 1;
     }
@@ -78,6 +88,14 @@ export function detectMarketStateChanges(ticks: PriceTick[]): MarketStateUpdate[
       ? config.marketOpenConfirmations   // opening: quick recovery
       : config.marketCloseConfirmations; // closing: high confidence needed
 
+    // Log debounce progress periodically
+    if (state.pendingCount % 10 === 0 || state.pendingCount === requiredConfirmations) {
+      logger.info(
+        "MarketState",
+        `${feedName}: debounce ${state.pendingCount}/${requiredConfirmations} toward ${incomingState ? "OPEN" : "CLOSED"} (confirmed=${state.isOpen ? "OPEN" : "CLOSED"})`
+      );
+    }
+
     if (state.pendingCount < requiredConfirmations) {
       continue; // not enough consecutive readings yet
     }
@@ -86,16 +104,16 @@ export function detectMarketStateChanges(ticks: PriceTick[]): MarketStateUpdate[
     if (state.lastTransitionAt > 0) {
       const elapsed = now - state.lastTransitionAt;
       if (elapsed < config.marketStateCooldownMs) {
-        const feedName = config.feedNames[tick.feedId] || `Feed ${tick.feedId}`;
-        logger.debug(
+        logger.info(
           "MarketState",
-          `${feedName} transition to ${incomingState ? "OPEN" : "CLOSED"} suppressed — cooldown (${Math.round((config.marketStateCooldownMs - elapsed) / 1000)}s remaining)`
+          `${feedName}: transition to ${incomingState ? "OPEN" : "CLOSED"} SUPPRESSED by cooldown (${Math.round((config.marketStateCooldownMs - elapsed) / 1000)}s remaining of ${config.marketStateCooldownMs / 1000}s)`
         );
         continue;
       }
     }
 
     // Transition confirmed!
+    const prevState = state.isOpen;
     state.isOpen = incomingState;
     state.pendingCount = 0;
     state.lastTransitionAt = now;
@@ -106,9 +124,11 @@ export function detectMarketStateChanges(ticks: PriceTick[]): MarketStateUpdate[
       timestamp: tick.timestamp,
     });
 
-    const feedName = config.feedNames[tick.feedId] || `Feed ${tick.feedId}`;
     const stateStr = incomingState ? "OPEN" : "CLOSED";
-    logger.info("MarketState", `${feedName} market ${stateStr} (confirmed after ${requiredConfirmations} readings)`);
+    logger.info(
+      "MarketState",
+      `*** ${feedName} market ${prevState ? "OPEN" : "CLOSED"} -> ${stateStr} (confirmed after ${requiredConfirmations} readings) ***`
+    );
   }
 
   return updates;

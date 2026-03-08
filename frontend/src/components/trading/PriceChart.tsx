@@ -12,18 +12,18 @@ import {
 } from "lightweight-charts";
 
 const INTERVALS = [
-  { label: "1m", interval: "1m", lookbackMs: 3_600_000, movementMs: 60_000 },
-  { label: "5m", interval: "5m", lookbackMs: 7_200_000, movementMs: 300_000 },
-  { label: "10m", interval: "10m", lookbackMs: 14_400_000, movementMs: 600_000 },
-  { label: "30m", interval: "30m", lookbackMs: 43_200_000, movementMs: 1_800_000 },
-  { label: "1h", interval: "1h", lookbackMs: 86_400_000, movementMs: 3_600_000 },
-  { label: "6h", interval: "6h", lookbackMs: 604_800_000, movementMs: 21_600_000 },
-  { label: "12h", interval: "12h", lookbackMs: 2_592_000_000, movementMs: 43_200_000 },
-  { label: "24h", interval: "1d", lookbackMs: 7_776_000_000, movementMs: 86_400_000 },
-  { label: "7d", interval: "1d", lookbackMs: 15_552_000_000, movementMs: 604_800_000 },
-  { label: "1M", interval: "1d", lookbackMs: 31_536_000_000, movementMs: 2_592_000_000 },
-  { label: "6M", interval: "1d", lookbackMs: 31_536_000_000, movementMs: 15_552_000_000 },
-  { label: "1Y", interval: "1d", lookbackMs: 31_536_000_000, movementMs: 31_536_000_000 },
+  { label: "1m", interval: "1m", limit: 2000, movementMs: 60_000 },
+  { label: "5m", interval: "5m", limit: 2000, movementMs: 300_000 },
+  { label: "10m", interval: "10m", limit: 1500, movementMs: 600_000 },
+  { label: "30m", interval: "30m", limit: 1500, movementMs: 1_800_000 },
+  { label: "1h", interval: "1h", limit: 1000, movementMs: 3_600_000 },
+  { label: "6h", interval: "6h", limit: 500, movementMs: 21_600_000 },
+  { label: "12h", interval: "12h", limit: 500, movementMs: 43_200_000 },
+  { label: "24h", interval: "1d", limit: 500, movementMs: 86_400_000 },
+  { label: "7d", interval: "1d", limit: 500, movementMs: 604_800_000 },
+  { label: "1M", interval: "1d", limit: 500, movementMs: 2_592_000_000 },
+  { label: "6M", interval: "1d", limit: 500, movementMs: 15_552_000_000 },
+  { label: "1Y", interval: "1d", limit: 500, movementMs: 31_536_000_000 },
 ] as const;
 
 interface PriceChartProps {
@@ -294,20 +294,15 @@ export function PriceChart({
 
     const fetchCandles = async () => {
       try {
-        const limit = selected.lookbackMs <= 300_000 ? 200 : 500;
         const res = await fetch(
-          `${apiUrl}/api/candles?feedId=${feedId}&interval=${selected.interval}&limit=${limit}`
+          `${apiUrl}/api/candles?feedId=${feedId}&interval=${selected.interval}&limit=${selected.limit}`
         );
         if (!res.ok) return;
         const data = await res.json();
         if (feedIdRef.current !== feedId) return;
 
         if (Array.isArray(data) && data.length > 0) {
-          const cutoff = Date.now() - selected.lookbackMs;
-          const filtered = data.filter(
-            (c: { timestamp: number }) => c.timestamp >= cutoff
-          );
-          const sorted = (filtered.length > 0 ? filtered : data).sort(
+          const sorted = [...data].sort(
             (a: { timestamp: number }, b: { timestamp: number }) =>
               a.timestamp - b.timestamp
           );
@@ -325,6 +320,7 @@ export function PriceChart({
           );
 
           seriesRef.current?.setData(points);
+          chartRef.current?.timeScale().fitContent();
 
           // Compute movement: latest price vs price N ago (matching the label)
           // If data doesn't go back far enough, use the oldest candle we have
@@ -370,8 +366,9 @@ export function PriceChart({
         const data: { state: string; timestamp: number }[] = await res.json();
         if (feedIdRef.current !== feedId) return;
 
-        const cutoff = Date.now() - selected.lookbackMs;
-        const inRange = data.filter((s) => s.timestamp >= cutoff);
+        // Filter market states to the candle data range
+        const firstCandle = candleTimesRef.current[0] ?? 0;
+        const inRange = data.filter((s) => s.timestamp >= firstCandle * 1000);
 
         // Always include the most recent state (current active state) even if
         // its timestamp predates the visible range — it means the entire chart
@@ -403,7 +400,7 @@ export function PriceChart({
       chartRef.current = null;
       seriesRef.current = null;
     };
-  }, [feedId, selectedIdx, apiUrl, selected.interval, selected.lookbackMs, selected.movementMs]);
+  }, [feedId, selectedIdx, apiUrl, selected.interval, selected.limit, selected.movementMs]);
 
   // Live price tick update
   useEffect(() => {

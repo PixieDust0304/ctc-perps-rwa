@@ -8,13 +8,14 @@ import { getChain } from "../config/chains.js";
 import { OracleABI } from "../abi/index.js";
 import { getWalletClient, signPriceBatch } from "../utils/signing.js";
 import { logger } from "../utils/logger.js";
-import { retry } from "../utils/retry.js";
 import { maybeTriggerAccrual } from "../keepers/feeAccrualKeeper.js";
 import { checkAndLiquidateAll } from "../keepers/liquidationEngine.js";
 import type { PriceTick } from "../types/index.js";
 
 let lastPushedTimestamps: Record<number, number> = {};
 let hasEverPushed = false;
+let lastPushLogAt = 0;
+let lastChainPushAt = 0;
 
 /**
  * Push price ticks to the Oracle contract onchain
@@ -25,6 +26,10 @@ export async function pushPrices(ticks: PriceTick[]): Promise<void> {
     return;
   }
 
+  // Throttle chain pushes to ~1 per block (no point submitting faster than block time)
+  const now = Date.now();
+  if (hasEverPushed && now - lastChainPushAt < config.blockTimeMs) return;
+
   // First push: include stale ticks so on-chain Oracle has data for MarketState
   // After that: only push fresh ticks
   const filteredTicks = ticks.filter(
@@ -32,54 +37,59 @@ export async function pushPrices(ticks: PriceTick[]): Promise<void> {
   );
   if (filteredTicks.length === 0) return;
 
+  if (now - lastPushLogAt > 10_000) {
+    logger.info(
+      "ChainPusher",
+      `Pushing ${filteredTicks.length} ticks: ${filteredTicks.map(t => `${t.feedId}(${t.fresh ? "fresh" : "stale"})`).join(", ")}`
+    );
+    lastPushLogAt = now;
+  }
+
   const feedIds = filteredTicks.map((t) => t.feedId);
   const rawPrices = filteredTicks.map((t) => t.rawPrice);
   const timestamps = filteredTicks.map((t) => BigInt(Math.floor(t.timestamp / 1000)));
   const freshFlags = filteredTicks.map((t) => t.fresh);
 
   try {
-    await retry(
-      async () => {
-        const signature = await signPriceBatch(feedIds, rawPrices, timestamps, freshFlags);
+    const signature = await signPriceBatch(feedIds, rawPrices, timestamps, freshFlags);
 
-        const walletClient = getWalletClient();
-        const publicClient = createPublicClient({
-          chain: getChain(),
-          transport: http(config.rpcUrl),
-        });
+    const walletClient = getWalletClient();
+    const publicClient = createPublicClient({
+      chain: getChain(),
+      transport: http(config.rpcUrl),
+    });
 
-        const { request } = await publicClient.simulateContract({
-          address: config.oracleAddress as Hex,
-          abi: OracleABI,
-          functionName: "updatePrices",
-          args: [
-            feedIds.map((id) => id),
-            rawPrices,
-            timestamps,
-            freshFlags,
-            signature,
-          ],
-          account: walletClient.account,
-        });
+    const { request } = await publicClient.simulateContract({
+      address: config.oracleAddress as Hex,
+      abi: OracleABI,
+      functionName: "updatePrices",
+      args: [
+        feedIds.map((id) => id),
+        rawPrices,
+        timestamps,
+        freshFlags,
+        signature,
+      ],
+      account: walletClient.account,
+    });
 
-        const txHash = await walletClient.writeContract(request);
-        logger.info("ChainPusher", `Prices pushed, tx: ${txHash}`);
-      },
-      3,
-      1000,
-      "pushPrices"
-    );
+    const txHash = await walletClient.writeContract(request);
+    logger.info("ChainPusher", `Prices pushed, tx: ${txHash}`);
   } catch (err) {
     const msg = (err as Error).message || "";
     if (msg.includes("stale update")) {
-      // Prices already on-chain with same or newer timestamp — skip silently
-      logger.debug("ChainPusher", "Skipping push: on-chain timestamps are current");
+      logger.debug("ChainPusher", "Skipping: on-chain timestamps are current");
+    } else if (msg.includes("already known")) {
+      logger.debug("ChainPusher", "Skipping: tx already in mempool");
+    } else if (msg.includes("replacement transaction underpriced")) {
+      logger.debug("ChainPusher", "Skipping: nonce conflict (overlapping push)");
     } else {
-      logger.error("ChainPusher", `Push failed: ${msg.slice(0, 200)}`);
+      logger.warn("ChainPusher", `Push failed: ${msg.slice(0, 200)}`);
     }
   }
 
-  // Always update last pushed timestamps to avoid re-attempting same data
+  // Always update timestamps to avoid re-attempting same data or same block
+  lastChainPushAt = Date.now();
   hasEverPushed = true;
   for (const tick of filteredTicks) {
     lastPushedTimestamps[tick.feedId] = tick.timestamp;

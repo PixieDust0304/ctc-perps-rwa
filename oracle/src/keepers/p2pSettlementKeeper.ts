@@ -16,27 +16,43 @@ const BATCH_SIZE = 50;
  */
 export async function handleMarketOpenSettlement(updates: MarketStateUpdate[]): Promise<void> {
   for (const update of updates) {
+    const feedName = config.feedNames?.[update.feedId] || `Feed ${update.feedId}`;
+    const direction = update.isOpen ? "CLOSED→OPEN" : "OPEN→CLOSED";
+    logger.info("P2PSettlement", `*** ${feedName} transition: ${direction} — starting settlement ***`);
+
     // Acquire settlement lock
     if (!startSettlement(update.feedId)) {
-      logger.warn("P2PSettlement", `Settlement already running for feed ${update.feedId}`);
+      logger.warn("P2PSettlement", `Settlement already running for ${feedName}, skipping`);
       continue;
     }
 
     try {
       if (update.isOpen) {
         // CLOSED→OPEN: deactivate VAMM, update MarketState, settle P2P positions
-        await deactivateVAMMForFeed(update.feedId);
+        // Each step is independent — one failure must not block the others
+        logger.info("P2PSettlement", `${feedName}: Step 1/3 — Deactivating VAMM`);
+        try { await deactivateVAMMForFeed(update.feedId); } catch (err) {
+          logger.warn("P2PSettlement", `${feedName}: VAMM deactivation failed: ${(err as Error).message}`);
+        }
+        logger.info("P2PSettlement", `${feedName}: Step 2/3 — Updating MarketState on-chain`);
         await updateMarketStateOnChain(update.feedId);
         if (config.p2pTradingAddress) {
+          logger.info("P2PSettlement", `${feedName}: Step 3/3 — Settling P2P positions`);
           await settleAllP2PPositions(update.feedId);
         }
+        logger.info("P2PSettlement", `${feedName}: CLOSED→OPEN settlement complete`);
       } else {
         // OPEN→CLOSED: initialize VAMM with last known price for P2P trading
-        await initializeVAMMForFeed(update.feedId);
+        logger.info("P2PSettlement", `${feedName}: Step 1/2 — Initializing VAMM`);
+        try { await initializeVAMMForFeed(update.feedId); } catch (err) {
+          logger.warn("P2PSettlement", `${feedName}: VAMM initialization failed: ${(err as Error).message}`);
+        }
+        logger.info("P2PSettlement", `${feedName}: Step 2/2 — Updating MarketState on-chain`);
         await updateMarketStateOnChain(update.feedId);
+        logger.info("P2PSettlement", `${feedName}: OPEN→CLOSED settlement complete`);
       }
     } catch (err) {
-      logger.error("P2PSettlement", `Settlement failed for feed ${update.feedId}: ${(err as Error).message}`);
+      logger.error("P2PSettlement", `${feedName}: Settlement FAILED: ${(err as Error).message}`);
     } finally {
       endSettlement(update.feedId);
     }
@@ -131,6 +147,26 @@ async function initializeVAMMForFeed(feedId: number): Promise<void> {
 
 async function deactivateVAMMForFeed(feedId: number): Promise<void> {
   if (!config.vammAddress) return;
+
+  // Check if VAMM is already inactive — skip to avoid revert
+  try {
+    const publicClient = createPublicClient({
+      chain: getChain(),
+      transport: http(config.rpcUrl),
+    });
+    const vammState = await publicClient.readContract({
+      address: config.vammAddress as Hex,
+      abi: VAMMABI,
+      functionName: "vamms",
+      args: [feedId],
+    }) as [bigint, bigint, bigint, bigint, boolean];
+    if (!vammState[4]) {
+      logger.info("P2PSettlement", `VAMM already inactive for feed ${feedId}, skipping deactivation`);
+      return;
+    }
+  } catch {
+    // Read failed — proceed with deactivation attempt
+  }
 
   await retry(
     async () => {
