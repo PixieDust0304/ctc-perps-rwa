@@ -32,4 +32,4 @@ oracle/prisma/*.db-journal
 # ---- Misc ----
 *.log
 
-start-local-prod.md
+start-local-prod.sh
