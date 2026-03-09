@@ -78,8 +78,17 @@ export async function pushPrices(ticks: PriceTick[]): Promise<void> {
     const txHash = await sendTx(request);
     logger.info("ChainPusher", `Prices pushed, tx: ${txHash}`);
 
-    // Wait for block confirmation so on-chain price is fresh for liquidation checks
-    await publicClient.waitForTransactionReceipt({ hash: txHash });
+    // Wait for block confirmation so on-chain price is fresh for liquidation checks.
+    // Timeout after 2 blocks to avoid hanging the pipeline if tx gets stuck.
+    try {
+      await publicClient.waitForTransactionReceipt({
+        hash: txHash,
+        timeout: config.blockTimeMs * 2,
+      });
+    } catch {
+      // Receipt timeout — tx may still land later, proceed optimistically
+      logger.warn("ChainPusher", `Receipt timeout for ${txHash}, continuing`);
+    }
     pushSucceeded = true;
   } catch (err) {
     const msg = (err as Error).message || "";

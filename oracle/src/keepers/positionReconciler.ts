@@ -42,6 +42,12 @@ export async function reconcile(): Promise<void> {
     const tradingCloseMap = new Map<string, { realizedPnl: string; txHash: string }>();
     const p2pCloseMap = new Map<string, { realizedPnl: string; txHash: string }>();
 
+    // Build collateral lookup for computing liquidation PnL
+    const collateralMap = new Map<string, string>();
+    for (const p of openPositionIds) {
+      collateralMap.set(p.positionId, p.collateral);
+    }
+
     if (config.tradingAddress && openPositionIds.some(p => p.type === "trading")) {
       try {
         const closeLogs = await client.getLogs({
@@ -66,6 +72,34 @@ export async function reconcile(): Promise<void> {
         }
       } catch {
         // Close event scan failed — reconciler will still close without PnL
+      }
+
+      // Also scan PositionLiquidated — trader loses entire collateral
+      try {
+        const liqLogs = await client.getLogs({
+          address: config.tradingAddress as Hex,
+          event: {
+            type: "event",
+            name: "PositionLiquidated",
+            inputs: [
+              { name: "positionId", type: "bytes32", indexed: true },
+              { name: "owner", type: "address", indexed: true },
+              { name: "liquidator", type: "address", indexed: false },
+            ],
+          },
+          fromBlock,
+          toBlock: "latest",
+        });
+        for (const log of liqLogs) {
+          const args = log.args as { positionId: Hex };
+          const col = collateralMap.get(args.positionId);
+          tradingCloseMap.set(args.positionId, {
+            realizedPnl: col ? `-${col}` : "0",
+            txHash: log.transactionHash ?? "",
+          });
+        }
+      } catch {
+        // Liquidation event scan failed
       }
     }
 
@@ -109,14 +143,17 @@ export async function reconcile(): Promise<void> {
           const data = result as { owner: Hex; feedId: number; isLong: boolean; collateral: bigint; sizeUsd: bigint; entryPrice: bigint };
           if (data.owner === ZERO_ADDRESS || data.collateral === 0n) {
             const closeData = tradingCloseMap.get(positionId);
+            // Check if this was a liquidation (negative PnL = full collateral loss)
+            const col = collateralMap.get(positionId);
+            const isLiq = closeData && col && closeData.realizedPnl === `-${col}`;
             await updatePositionStatus(
               positionId,
-              "closed",
+              isLiq ? "liquidated" : "closed",
               closeData?.realizedPnl,
               closeData?.txHash || undefined,
             );
             fixed++;
-            logger.info("Reconciler", `Fixed stale trading position: ${positionId}${closeData ? ` (PnL: ${closeData.realizedPnl})` : ""}`);
+            logger.info("Reconciler", `Fixed stale trading position: ${positionId} (${isLiq ? "liquidated" : "closed"})${closeData ? ` (PnL: ${closeData.realizedPnl})` : ""}`);
           } else {
             // Backfill into in-memory map if not already tracked (handles init failure)
             const added = ensureTracked(positionId as Hex, {

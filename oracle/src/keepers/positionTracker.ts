@@ -478,12 +478,15 @@ export function startWatching(): void {
           const args = log.args as { positionId: Hex };
           const pos = openPositions.get(args.positionId);
           openPositions.delete(args.positionId);
-          updatePositionStatus(args.positionId, "liquidated", undefined, log.transactionHash ?? undefined);
+          // PositionLiquidated doesn't emit realizedPnl — trader loses entire collateral
+          const realizedPnl = pos ? (-pos.collateral).toString() : undefined;
+          updatePositionStatus(args.positionId, "liquidated", realizedPnl, log.transactionHash ?? undefined);
           broadcastPositionUpdate("liquidated", "trading", {
             positionId: args.positionId,
+            realizedPnl,
             ...(pos ? serializePosition(pos) : {}),
           });
-          logger.info("PositionTracker", `Position liquidated: ${args.positionId}`);
+          logger.info("PositionTracker", `Position liquidated: ${args.positionId}${realizedPnl ? ` (PnL: ${realizedPnl})` : ""}`);
         }
       },
     });
@@ -686,12 +689,15 @@ function startLogPolling(): void {
           if (!openPositions.has(args.positionId)) continue;
           const pos = openPositions.get(args.positionId);
           openPositions.delete(args.positionId);
-          updatePositionStatus(args.positionId, "liquidated", undefined, log.transactionHash ?? undefined);
+          // PositionLiquidated doesn't emit realizedPnl — trader loses entire collateral
+          const realizedPnl = pos ? (-pos.collateral).toString() : undefined;
+          updatePositionStatus(args.positionId, "liquidated", realizedPnl, log.transactionHash ?? undefined);
           broadcastPositionUpdate("liquidated", "trading", {
             positionId: args.positionId,
+            realizedPnl,
             ...(pos ? serializePosition(pos) : {}),
           });
-          logger.info("PositionTracker", `[poll] Position liquidated: ${args.positionId}`);
+          logger.info("PositionTracker", `[poll] Position liquidated: ${args.positionId}${realizedPnl ? ` (PnL: ${realizedPnl})` : ""}`);
         }
 
         const collateralLogs = await client.getLogs({

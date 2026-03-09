@@ -369,14 +369,19 @@ export async function queryPositionsByType(
 /**
  * Get all open position IDs (for reconciliation)
  */
-export async function getAllOpenPositionIds(): Promise<{ positionId: string; type: string }[]> {
+export async function getAllOpenPositionIds(): Promise<{ positionId: string; type: string; collateral: string }[]> {
   if (!prisma) return [];
 
   try {
-    return await prisma.positionRecord.findMany({
+    const rows = await prisma.positionRecord.findMany({
       where: { status: "open" },
-      select: { positionId: true, type: true },
+      select: { positionId: true, type: true, collateral: true },
     });
+    return rows.map((r) => ({
+      positionId: r.positionId,
+      type: r.type,
+      collateral: r.collateral.toString(),
+    }));
   } catch (err) {
     logger.warn("DB", `Failed to get open position IDs: ${err}`);
     return [];
