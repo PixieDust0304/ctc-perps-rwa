@@ -74,6 +74,7 @@ export function PositionsPanel({
 
   // Fetch custody fee state for all feeds with positions
   const feedIds = [...new Set(tradingPositions.map((p) => p.feedId))];
+  const CUSTODY_READS_PER_FEED = 8;
   const custodyContracts = feedIds.flatMap((fid) => {
     const addr = CUSTODY_ADDRESSES[fid as keyof typeof CUSTODY_ADDRESSES] as Address | undefined;
     if (!addr) return [];
@@ -83,12 +84,46 @@ export function PositionsPanel({
       { address: addr, abi: CUSTODY_ABI, functionName: "lpLiquidity" as const },
       { address: addr, abi: CUSTODY_ABI, functionName: "maxBaseFeePerHourBps" as const },
       { address: addr, abi: CUSTODY_ABI, functionName: "maxFundingRatePerHourBps" as const },
+      { address: addr, abi: CUSTODY_ABI, functionName: "cumulativeLongBaseFeePerUnit" as const },
+      { address: addr, abi: CUSTODY_ABI, functionName: "cumulativeShortBaseFeePerUnit" as const },
+      { address: addr, abi: CUSTODY_ABI, functionName: "cumulativeFundingPerUnit" as const },
     ];
   });
   const { data: custodyFeeData } = useReadContracts({
     contracts: custodyContracts.length > 0 ? custodyContracts : [],
     query: { refetchInterval: 5000 },
   });
+
+  // Read on-chain position snapshots for fee calculation
+  const openTradingPositions = tradingPositions.filter((p) => p.status === "open" || !p.status);
+  const positionContracts = CONTRACTS.trading
+    ? openTradingPositions.map((p) => ({
+        address: CONTRACTS.trading as Address,
+        abi: TRADING_ABI,
+        functionName: "getPosition" as const,
+        args: [p.positionId] as const,
+      }))
+    : [];
+  const { data: positionOnChainData } = useReadContracts({
+    contracts: positionContracts.length > 0 ? positionContracts : [],
+    query: { refetchInterval: 5000 },
+  });
+
+  // Build map: positionId -> { baseFeeSnapshot, fundingSnapshot }
+  const positionSnapshots = new Map<string, { baseFeeSnapshot: bigint; fundingSnapshot: bigint }>();
+  if (positionOnChainData) {
+    openTradingPositions.forEach((pos, idx) => {
+      const result = positionOnChainData[idx]?.result as
+        | { cumulativeBaseFeeSnapshot: bigint; cumulativeFundingSnapshot: bigint }
+        | undefined;
+      if (result) {
+        positionSnapshots.set(pos.positionId, {
+          baseFeeSnapshot: result.cumulativeBaseFeeSnapshot,
+          fundingSnapshot: result.cumulativeFundingSnapshot,
+        });
+      }
+    });
+  }
 
   // Read VAMM state for feeds with P2P positions (for simulated exit PnL)
   const p2pFeedIds = [...new Set(p2pPositions.map((p) => p.feedId))];
@@ -120,16 +155,27 @@ export function PositionsPanel({
     });
   }
 
-  // Build fee info per feed
-  const feeInfoByFeed = new Map<number, { baseFeeRateLong: number; baseFeeRateShort: number; fundingPerHour: number }>();
+  // Build fee info + accumulator state per feed
+  interface FeedFeeInfo {
+    baseFeeRateLong: number;
+    baseFeeRateShort: number;
+    fundingPerHour: number;
+    longBaseFeeAccum: bigint;
+    shortBaseFeeAccum: bigint;
+    fundingAccum: bigint;
+  }
+  const feeInfoByFeed = new Map<number, FeedFeeInfo>();
   if (custodyFeeData) {
     feedIds.forEach((fid, idx) => {
-      const base = idx * 5;
+      const base = idx * CUSTODY_READS_PER_FEED;
       const longOI = Number(formatEther((custodyFeeData[base]?.result as bigint) ?? 0n));
       const shortOI = Number(formatEther((custodyFeeData[base + 1]?.result as bigint) ?? 0n));
       const lpLiq = Number(formatEther((custodyFeeData[base + 2]?.result as bigint) ?? 0n));
       const maxBaseFeeBps = Number((custodyFeeData[base + 3]?.result as bigint) ?? 0n);
       const maxFundingBps = Number((custodyFeeData[base + 4]?.result as bigint) ?? 0n);
+      const longBaseFeeAccum = (custodyFeeData[base + 5]?.result as bigint) ?? 0n;
+      const shortBaseFeeAccum = (custodyFeeData[base + 6]?.result as bigint) ?? 0n;
+      const fundingAccum = (custodyFeeData[base + 7]?.result as bigint) ?? 0n;
 
       const longUtil = lpLiq > 0 ? Math.min(longOI / lpLiq, 1) : 0;
       const shortUtil = lpLiq > 0 ? Math.min(shortOI / lpLiq, 1) : 0;
@@ -140,11 +186,15 @@ export function PositionsPanel({
       const imbalance = totalOI > 0 ? (longOI - shortOI) / totalOI : 0;
       const fundingPerHour = imbalance * (maxFundingBps / 10000);
 
-      feeInfoByFeed.set(fid, { baseFeeRateLong, baseFeeRateShort, fundingPerHour });
+      feeInfoByFeed.set(fid, {
+        baseFeeRateLong, baseFeeRateShort, fundingPerHour,
+        longBaseFeeAccum, shortBaseFeeAccum, fundingAccum,
+      });
     });
   }
 
-  // Get fee costs for a specific position
+  // Get fee costs for a specific position — uses real on-chain accumulators
+  const PRECISION = 10n ** 18n;
   const getFeeCosts = (pos: PositionData) => {
     const info = feeInfoByFeed.get(pos.feedId);
     if (!info) return null;
@@ -152,32 +202,56 @@ export function PositionsPanel({
     const collateral = Number(pos.collateral) / 1e18;
     if (collateral === 0) return null;
 
+    // Current fee rates (for "per hour" display and future projection)
     const baseFeeRate = pos.isLong ? info.baseFeeRateLong : info.baseFeeRateShort;
     const baseFeePerHour = sizeUsd * baseFeeRate;
-    // Funding: positive = longs pay. For shorts, sign flips.
     const fundingCostPerHour = pos.isLong
       ? info.fundingPerHour * sizeUsd
       : -info.fundingPerHour * sizeUsd;
     const totalPerHour = baseFeePerHour + Math.max(fundingCostPerHour, 0);
-    const hoursToLiq = totalPerHour > 0 ? (collateral * 0.9) / totalPerHour : Infinity; // 90% of collateral (10% maint margin)
 
-    // Estimated accumulated fees (if we have openedAt)
-    let accumulatedFees = 0;
-    if (pos.openedAt) {
+    // Real accrued fees from on-chain accumulators (mirrors PositionUtils.effectiveCollateral)
+    let accumulatedBaseFee = 0;
+    let accumulatedFunding = 0; // positive = trader pays, negative = trader receives
+    const snapshot = positionSnapshots.get(pos.positionId);
+    if (snapshot) {
+      const sizeRaw = BigInt(pos.sizeUsd);
+
+      // Base fee: (currentAccum - snapshot) * sizeUsd / PRECISION
+      const baseFeeAccum = pos.isLong ? info.longBaseFeeAccum : info.shortBaseFeeAccum;
+      const baseFeeRaw = (baseFeeAccum - snapshot.baseFeeSnapshot) * sizeRaw / PRECISION;
+      accumulatedBaseFee = Number(baseFeeRaw) / 1e18;
+
+      // Funding: signed, longs pay when positive, shorts pay when negative
+      const fundingDelta = info.fundingAccum - snapshot.fundingSnapshot;
+      const signedDelta = pos.isLong ? fundingDelta : -fundingDelta;
+      const fundingRaw = signedDelta * sizeRaw / PRECISION;
+      accumulatedFunding = Number(fundingRaw) / 1e18;
+    } else if (pos.openedAt) {
+      // Fallback: naive estimate when on-chain data not yet loaded
       const openedAtMs = pos.openedAt.includes("T")
         ? new Date(pos.openedAt).getTime()
         : Number(pos.openedAt) * 1000;
       const hoursOpen = (Date.now() - openedAtMs) / 3600000;
-      accumulatedFees = totalPerHour * Math.max(hoursOpen, 0);
+      accumulatedBaseFee = totalPerHour * Math.max(hoursOpen, 0);
     }
+
+    // Total drain = base fees + funding paid (funding received reduces drain)
+    const totalAccrued = accumulatedBaseFee + accumulatedFunding;
+    const effectiveCollateral = collateral - totalAccrued;
+
+    // Fee-liq: time until effective collateral hits maintenance margin (10%)
+    const maintenanceMargin = collateral * 0.1;
+    const remainingBudget = effectiveCollateral - maintenanceMargin;
+    const hoursToLiq = totalPerHour > 0 ? Math.max(remainingBudget, 0) / totalPerHour : Infinity;
 
     return {
       baseFeePerHour,
       fundingCostPerHour: Math.max(fundingCostPerHour, 0),
       totalPerHour,
       hoursToLiq,
-      accumulatedFees,
-      effectiveCollateral: collateral - accumulatedFees,
+      accumulatedFees: Math.max(totalAccrued, 0),
+      effectiveCollateral,
     };
   };
 
