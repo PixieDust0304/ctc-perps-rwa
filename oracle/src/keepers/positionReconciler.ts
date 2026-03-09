@@ -4,6 +4,7 @@ import { getChain } from "../config/chains.js";
 import { TradingABI, P2PTradingABI } from "../abi/index.js";
 import { logger } from "../utils/logger.js";
 import { getAllOpenPositionIds, updatePositionStatus, persistPosition, getPrisma, logKeeperEvent } from "../services/database.js";
+import { ensureTracked } from "./positionTracker.js";
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 const RECONCILE_BLOCK_LOOKBACK = BigInt(process.env.RECONCILE_BLOCK_LOOKBACK || "5000");
@@ -105,7 +106,7 @@ export async function reconcile(): Promise<void> {
             args: [positionId as Hex],
           });
 
-          const data = result as { owner: Hex; collateral: bigint };
+          const data = result as { owner: Hex; feedId: number; isLong: boolean; collateral: bigint; sizeUsd: bigint; entryPrice: bigint };
           if (data.owner === ZERO_ADDRESS || data.collateral === 0n) {
             const closeData = tradingCloseMap.get(positionId);
             await updatePositionStatus(
@@ -117,6 +118,18 @@ export async function reconcile(): Promise<void> {
             fixed++;
             logger.info("Reconciler", `Fixed stale trading position: ${positionId}${closeData ? ` (PnL: ${closeData.realizedPnl})` : ""}`);
           } else {
+            // Backfill into in-memory map if not already tracked (handles init failure)
+            const added = ensureTracked(positionId as Hex, {
+              owner: data.owner,
+              feedId: data.feedId,
+              isLong: data.isLong,
+              collateral: data.collateral,
+              sizeUsd: data.sizeUsd,
+              entryPrice: data.entryPrice,
+            });
+            if (added) {
+              logger.info("Reconciler", `Backfilled trading position into tracker: ${positionId}`);
+            }
             verified++;
           }
         } else if (type === "p2p" && config.p2pTradingAddress) {

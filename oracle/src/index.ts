@@ -190,10 +190,12 @@ async function main() {
   // Initialize position tracker (DB-backed or chain replay + live watchers)
   try {
     await initPositions();
-    startWatching();
   } catch (err) {
-    logger.warn("Main", `Position tracker init failed: ${(err as Error).message}`);
+    logger.warn("Main", `Position tracker init failed (will rely on reconciler + poller): ${(err as Error).message.slice(0, 200)}`);
   }
+  // ALWAYS start watchers + poller — even if init failed, the poller will pick up new events
+  // and the reconciler will backfill existing positions into the in-memory map
+  startWatching();
 
   // Start reconciler: interval derives from block time (at least every 4 blocks, min 10s)
   if (getPrisma()) {

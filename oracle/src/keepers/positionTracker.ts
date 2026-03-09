@@ -122,8 +122,12 @@ export async function initPositions(): Promise<void> {
     }
   }
 
-  // Fallback: replay from chain
-  await replayHistoricalPositions();
+  // Fallback: replay from chain (may timeout on CTC testnet with large block ranges)
+  try {
+    await replayHistoricalPositions();
+  } catch (err) {
+    logger.warn("PositionTracker", `Chain replay failed (reconciler will backfill): ${(err as Error).message.slice(0, 200)}`);
+  }
 }
 
 /**
@@ -893,6 +897,34 @@ export async function enrichPosition(positionId: Hex): Promise<Position | undefi
     logger.warn("PositionTracker", `Failed to enrich position ${positionId}: ${(err as Error).message}`);
     return pos;
   }
+}
+
+/**
+ * Ensure a trading position is tracked in the in-memory map (called by reconciler to backfill).
+ * Returns true if the position was newly added.
+ */
+export function ensureTracked(positionId: Hex, pos: {
+  owner: Hex;
+  feedId: number;
+  isLong: boolean;
+  collateral: bigint;
+  sizeUsd: bigint;
+  entryPrice: bigint;
+}): boolean {
+  if (openPositions.has(positionId)) return false;
+  openPositions.set(positionId, {
+    id: positionId,
+    owner: pos.owner,
+    feedId: pos.feedId,
+    isLong: pos.isLong,
+    collateral: pos.collateral,
+    sizeUsd: pos.sizeUsd,
+    entryPrice: pos.entryPrice,
+    openTimestamp: 0n,
+    cumulativeBaseFeeSnapshot: 0n,
+    cumulativeFundingSnapshot: 0n,
+  });
+  return true;
 }
 
 export function getOpenPositions(feedId?: number): Position[] {
