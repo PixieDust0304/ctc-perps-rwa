@@ -77,6 +77,9 @@ export async function pushPrices(ticks: PriceTick[]): Promise<void> {
 
     const txHash = await sendTx(request);
     logger.info("ChainPusher", `Prices pushed, tx: ${txHash}`);
+
+    // Wait for block confirmation so on-chain price is fresh for liquidation checks
+    await publicClient.waitForTransactionReceipt({ hash: txHash });
     pushSucceeded = true;
   } catch (err) {
     const msg = (err as Error).message || "";
