@@ -67,7 +67,9 @@ export function PriceChart({
   const seriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   const overlayCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const feedIdRef = useRef(feedId);
-  const marketStatesRef = useRef<{ state: string; timestamp: number }[]>([]);
+  // Raw (unfiltered) market states from API — filtered dynamically in drawOverlayLines
+  // based on current candleTimesRef so lazy-loaded candles automatically reveal older markers
+  const rawMarketStatesRef = useRef<{ state: string; timestamp: number }[]>([]);
   const candleTimesRef = useRef<number[]>([]);
   const startPriceRef = useRef<number>(0);
 
@@ -225,8 +227,23 @@ export function PriceChart({
       ctx.scale(dpr, dpr);
       ctx.clearRect(0, 0, w, h);
 
-      for (const ms of marketStatesRef.current) {
-        const snapped = snapToNearestCandle(ms.timestamp, candleTimesRef.current);
+      // Filter market states to the current candle range (dynamic — updates as lazy load extends range)
+      const cTimes = candleTimesRef.current;
+      const firstCandleSec = cTimes[0] ?? 0;
+      const lastCandleSec = cTimes[cTimes.length - 1] ?? 0;
+      let visibleStates = rawMarketStatesRef.current.filter(
+        (s) => {
+          const sSec = s.timestamp / 1000;
+          return sSec >= firstCandleSec && sSec <= lastCandleSec;
+        }
+      );
+      // If no states in range, show the most recent one (pins to left edge via snap)
+      if (visibleStates.length === 0 && rawMarketStatesRef.current.length > 0) {
+        visibleStates = [rawMarketStatesRef.current[rawMarketStatesRef.current.length - 1]];
+      }
+
+      for (const ms of visibleStates) {
+        const snapped = snapToNearestCandle(ms.timestamp, cTimes);
         const x = ts.timeToCoordinate(snapped as Time);
         if (x === null || x < 0 || x > w) continue;
 
@@ -477,19 +494,9 @@ export function PriceChart({
         const data: { state: string; timestamp: number }[] = await res.json();
         if (feedIdRef.current !== feedId) return;
 
-        // Filter market states to the candle data range
-        const firstCandle = candleTimesRef.current[0] ?? 0;
-        const inRange = data.filter((s) => s.timestamp >= firstCandle * 1000);
-
-        // Always include the most recent state (current active state) even if
-        // its timestamp predates the visible range — it means the entire chart
-        // is within that state. snapToNearestCandle will pin it to the left edge.
-        if (inRange.length === 0 && data.length > 0) {
-          const sorted = [...data].sort((a, b) => b.timestamp - a.timestamp);
-          inRange.push(sorted[0]);
-        }
-
-        marketStatesRef.current = inRange.sort((a, b) => a.timestamp - b.timestamp);
+        // Store all states sorted by time — drawOverlayLines filters dynamically
+        // based on the current candle range (which extends as lazy loading adds data)
+        rawMarketStatesRef.current = [...data].sort((a, b) => a.timestamp - b.timestamp);
 
         drawOverlayLines();
       } catch {
