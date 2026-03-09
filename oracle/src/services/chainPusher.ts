@@ -7,6 +7,7 @@ import { config } from "../config/index.js";
 import { getChain } from "../config/chains.js";
 import { OracleABI } from "../abi/index.js";
 import { getWalletClient, signPriceBatch } from "../utils/signing.js";
+import { sendTx } from "../utils/txSender.js";
 import { logger } from "../utils/logger.js";
 import { maybeTriggerAccrual } from "../keepers/feeAccrualKeeper.js";
 import { checkAndLiquidateAll } from "../keepers/liquidationEngine.js";
@@ -74,7 +75,7 @@ export async function pushPrices(ticks: PriceTick[]): Promise<void> {
       account: walletClient.account,
     });
 
-    const txHash = await walletClient.writeContract(request);
+    const txHash = await sendTx(request);
     logger.info("ChainPusher", `Prices pushed, tx: ${txHash}`);
     pushSucceeded = true;
   } catch (err) {

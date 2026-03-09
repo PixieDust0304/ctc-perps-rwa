@@ -2,6 +2,7 @@ import { createPublicClient, http, type Hex } from "viem";
 import { config } from "../config/index.js";
 import { getChain } from "../config/chains.js";
 import { getWalletClient } from "../utils/signing.js";
+import { sendTx } from "../utils/txSender.js";
 import { logger } from "../utils/logger.js";
 import { retry } from "../utils/retry.js";
 import type { MarketStateUpdate } from "../types/index.js";
@@ -63,7 +64,7 @@ export async function handleMarketOpen(updates: MarketStateUpdate[]): Promise<vo
             account: walletClient.account,
           });
 
-          const txHash = await walletClient.writeContract(request);
+          const txHash = await sendTx(request);
           logger.info("MarketOpenKeeper", `MarketState updated, tx: ${txHash}`);
         },
         3,

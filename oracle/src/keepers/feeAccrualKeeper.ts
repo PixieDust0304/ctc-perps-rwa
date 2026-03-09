@@ -3,6 +3,7 @@ import { config } from "../config/index.js";
 import { getChain } from "../config/chains.js";
 import { CustodyABI } from "../abi/index.js";
 import { getWalletClient } from "../utils/signing.js";
+import { sendTx } from "../utils/txSender.js";
 import { logger } from "../utils/logger.js";
 
 const FEE_INTERVAL_MS = config.feeInterval * 1000; // 15s default
@@ -37,7 +38,7 @@ export async function maybeTriggerAccrual(): Promise<void> {
           functionName: "accrueFees",
           account: walletClient.account,
         });
-        const txHash = await walletClient.writeContract(request);
+        const txHash = await sendTx(request);
         logger.info("FeeAccrual", `accrueFees() for feed ${feedId}, tx: ${txHash}`);
       } catch (err) {
         // accrueFees may revert if interval not elapsed — expected during rapid pushes

@@ -3,6 +3,7 @@ import { config } from "../config/index.js";
 import { getChain } from "../config/chains.js";
 import { TradingABI, CustodyABI } from "../abi/index.js";
 import { getWalletClient } from "../utils/signing.js";
+import { sendTx } from "../utils/txSender.js";
 import { logger } from "../utils/logger.js";
 import { getOpenPositions, enrichPosition } from "./positionTracker.js";
 import { isSettlementInProgress } from "./keeperCoordinator.js";
@@ -83,7 +84,7 @@ export async function checkAndLiquidateAll(ticks: PriceTick[]): Promise<void> {
             args: [positionId],
             account: walletClient.account,
           });
-          const txHash = await walletClient.writeContract(request);
+          const txHash = await sendTx(request);
           logger.info("Liquidation", `Liquidated ${positionId}, tx: ${txHash}`);
         } catch (err) {
           // Simulation reverted — position not actually liquidatable (race, stale state, or pre-check mismatch)

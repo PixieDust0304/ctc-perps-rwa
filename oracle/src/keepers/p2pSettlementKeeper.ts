@@ -3,6 +3,7 @@ import { config } from "../config/index.js";
 import { getChain } from "../config/chains.js";
 import { P2PTradingABI, OracleABI, MarketStateABI, VAMMABI, CustodyABI } from "../abi/index.js";
 import { getWalletClient } from "../utils/signing.js";
+import { sendTx } from "../utils/txSender.js";
 import { getLatestPrice } from "../services/priceStore.js";
 import { logger } from "../utils/logger.js";
 import { retry } from "../utils/retry.js";
@@ -113,7 +114,7 @@ async function initializeVAMMForFeed(feedId: number): Promise<void> {
         args: [feedId, depth],
         account: walletClient.account,
       });
-      const txHash = await walletClient.writeContract(request);
+      const txHash = await sendTx(request);
       logger.info("P2PSettlement", `VAMM depth set for feed ${feedId}: $${Number(depth) / 1e18} (lpLiq=$${Number(lpLiq) / 1e18}), tx: ${txHash}`);
     } catch (err) {
       logger.warn("P2PSettlement", `Dynamic depth failed for feed ${feedId}, using existing: ${(err as Error).message}`);
@@ -136,7 +137,7 @@ async function initializeVAMMForFeed(feedId: number): Promise<void> {
         account: walletClient.account,
       });
 
-      const txHash = await walletClient.writeContract(request);
+      const txHash = await sendTx(request);
       logger.info("P2PSettlement", `VAMM initialized for feed ${feedId} at $${Number(lastPrice.price) / 1e18}, tx: ${txHash}`);
     },
     3,
@@ -184,7 +185,7 @@ async function deactivateVAMMForFeed(feedId: number): Promise<void> {
         account: walletClient.account,
       });
 
-      const txHash = await walletClient.writeContract(request);
+      const txHash = await sendTx(request);
       logger.info("P2PSettlement", `VAMM deactivated for feed ${feedId}, tx: ${txHash}`);
     },
     3,
@@ -212,7 +213,7 @@ async function updateMarketStateOnChain(feedId: number): Promise<void> {
         account: walletClient.account,
       });
 
-      const txHash = await walletClient.writeContract(request);
+      const txHash = await sendTx(request);
       logger.info("P2PSettlement", `MarketState updated for feed ${feedId}, tx: ${txHash}`);
     },
     3,
@@ -280,7 +281,7 @@ async function settleAllP2PPositions(feedId: number): Promise<void> {
           account: walletClient.account,
         });
 
-        const txHash = await walletClient.writeContract(request);
+        const txHash = await sendTx(request);
         logger.info(
           "P2PSettlement",
           `Settled batch ${Math.floor(i / BATCH_SIZE) + 1} (${batch.length} positions), tx: ${txHash}`
@@ -301,7 +302,7 @@ async function settleAllP2PPositions(feedId: number): Promise<void> {
       args: [feedId],
       account: walletClient.account,
     });
-    const txHash = await walletClient.writeContract(request);
+    const txHash = await sendTx(request);
     logger.info("P2PSettlement", `Swept leftover USDC for feed ${feedId}, tx: ${txHash}`);
   } catch (err) {
     logger.warn("P2PSettlement", `Sweep skipped for feed ${feedId}: ${(err as Error).message.slice(0, 200)}`);
