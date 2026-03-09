@@ -10,6 +10,28 @@ import { PnLPopup } from "./PnLPopup";
 import type { PositionUpdate } from "../../hooks/useWebSocket";
 
 const ORACLE_API = process.env.NEXT_PUBLIC_ORACLE_API_URL || "http://localhost:3001";
+
+/** Convert a value that might be scientific notation (e.g., "9e+22") to BigInt safely */
+function safeBigInt(val: string | number | bigint): bigint {
+  if (typeof val === "bigint") return val;
+  const s = String(val);
+  // Plain integer string — fast path
+  if (!s.includes("e") && !s.includes("E") && !s.includes(".")) return BigInt(s);
+  // Scientific notation: parse mantissa + exponent without floating-point loss
+  const match = s.match(/^([+-]?\d+\.?\d*)[eE]([+-]?\d+)$/);
+  if (match) {
+    const [, mant, expStr] = match;
+    const exp = parseInt(expStr);
+    const neg = mant.startsWith("-");
+    const [whole, frac = ""] = mant.replace(/^[+-]/, "").split(".");
+    const digits = whole + frac;
+    const zerosNeeded = exp - frac.length;
+    return BigInt((neg ? "-" : "") + digits + "0".repeat(Math.max(zerosNeeded, 0)));
+  }
+  // Decimal without exponent — truncate fractional part
+  const dotIdx = s.indexOf(".");
+  return BigInt(dotIdx >= 0 ? s.slice(0, dotIdx) : s);
+}
 const MIN_OPEN_TIME_TRADING = 300; // seconds — must match Trading.sol
 const MIN_OPEN_TIME_P2P = 10; // seconds — must match P2PTrading.sol
 
@@ -215,7 +237,7 @@ export function PositionsPanel({
     let accumulatedFunding = 0; // positive = trader pays, negative = trader receives
     const snapshot = positionSnapshots.get(pos.positionId);
     if (snapshot) {
-      const sizeRaw = BigInt(pos.sizeUsd);
+      const sizeRaw = safeBigInt(pos.sizeUsd);
 
       // Base fee: (currentAccum - snapshot) * sizeUsd / PRECISION
       const baseFeeAccum = pos.isLong ? info.longBaseFeeAccum : info.shortBaseFeeAccum;
