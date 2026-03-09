@@ -32,6 +32,11 @@ function safeBigInt(val: string | number | bigint): bigint {
   const dotIdx = s.indexOf(".");
   return BigInt(dotIdx >= 0 ? s.slice(0, dotIdx) : s);
 }
+/** Safely convert a raw 18-decimal string/number to a JS number (USD value) */
+function toUsd(raw: string | number | bigint): number {
+  return Number(formatEther(safeBigInt(raw)));
+}
+
 const MIN_OPEN_TIME_TRADING = 300; // seconds — must match Trading.sol
 const MIN_OPEN_TIME_P2P = 10; // seconds — must match P2PTrading.sol
 
@@ -220,8 +225,8 @@ export function PositionsPanel({
   const getFeeCosts = (pos: PositionData) => {
     const info = feeInfoByFeed.get(pos.feedId);
     if (!info) return null;
-    const sizeUsd = Number(pos.sizeUsd) / 1e18;
-    const collateral = Number(pos.collateral) / 1e18;
+    const sizeUsd = toUsd(pos.sizeUsd);
+    const collateral = toUsd(pos.collateral);
     if (collateral === 0) return null;
 
     // Current fee rates (for "per hour" display and future projection)
@@ -242,13 +247,13 @@ export function PositionsPanel({
       // Base fee: (currentAccum - snapshot) * sizeUsd / PRECISION
       const baseFeeAccum = pos.isLong ? info.longBaseFeeAccum : info.shortBaseFeeAccum;
       const baseFeeRaw = (baseFeeAccum - snapshot.baseFeeSnapshot) * sizeRaw / PRECISION;
-      accumulatedBaseFee = Number(baseFeeRaw) / 1e18;
+      accumulatedBaseFee = Number(formatEther(baseFeeRaw));
 
       // Funding: signed, longs pay when positive, shorts pay when negative
       const fundingDelta = info.fundingAccum - snapshot.fundingSnapshot;
       const signedDelta = pos.isLong ? fundingDelta : -fundingDelta;
       const fundingRaw = signedDelta * sizeRaw / PRECISION;
-      accumulatedFunding = Number(fundingRaw) / 1e18;
+      accumulatedFunding = Number(formatEther(fundingRaw));
     } else if (pos.openedAt) {
       // Fallback: naive estimate when on-chain data not yet loaded
       const openedAtMs = pos.openedAt.includes("T")
@@ -447,8 +452,9 @@ export function PositionsPanel({
             });
             if (decoded.eventName === "PositionClosed") {
               const realizedPnl = Number(formatEther((decoded.args as { realizedPnl: bigint }).realizedPnl));
-              const collateral = Number(pos.collateral) / 1e18;
-              const sizeUsd = Number(pos.sizeUsd) / 1e18;
+              const collateral = toUsd(pos.collateral);
+              const sizeUsd = toUsd(pos.sizeUsd);
+              const entryPrice = toUsd(pos.entryPrice);
               const leverage = collateral > 0 ? sizeUsd / collateral : 0;
               const pnlPercent = collateral > 0 ? (realizedPnl / collateral) * 100 : 0;
               setPnlPopup({
@@ -460,7 +466,7 @@ export function PositionsPanel({
                 leverage,
                 asset: FEED_NAMES[pos.feedId] ?? `Feed ${pos.feedId}`,
                 isLong: pos.isLong,
-                entryPrice: Number(pos.entryPrice) / 1e18,
+                entryPrice,
               });
               break;
             }
@@ -518,7 +524,8 @@ export function PositionsPanel({
             });
             if (decoded.eventName === "P2PPositionClosed") {
               const realizedPnl = Number(formatEther((decoded.args as { realizedPnl: bigint }).realizedPnl));
-              const collateral = Number(pos.collateral) / 1e18;
+              const collateral = toUsd(pos.collateral);
+              const entryPrice = toUsd(pos.entryPrice);
               const pnlPercent = collateral > 0 ? (realizedPnl / collateral) * 100 : 0;
               setPnlPopup({
                 isOpen: true,
@@ -529,7 +536,7 @@ export function PositionsPanel({
                 leverage: 1,
                 asset: FEED_NAMES[pos.feedId] ?? `Feed ${pos.feedId}`,
                 isLong: pos.isLong,
-                entryPrice: Number(pos.entryPrice) / 1e18,
+                entryPrice,
               });
               break;
             }
@@ -575,28 +582,27 @@ export function PositionsPanel({
   };
 
   const getPnl = (pos: PositionData) => {
-    const entry = Number(pos.entryPrice) / 1e18;
-    const collateral = Number(pos.collateral);
-    const sizeUsd = Number(pos.sizeUsd);
+    const entry = toUsd(pos.entryPrice);
+    const collateral = toUsd(pos.collateral);
+    const sizeUsd = toUsd(pos.sizeUsd);
     if (collateral === 0) return null;
 
     // For P2P positions: simulate reverse swap to get actual exit price
     if (pos.type === "p2p") {
       const vamm = vammByFeed.get(pos.feedId);
       if (!vamm || !vamm.active) return null;
-      const sizeUsdFloat = sizeUsd / 1e18;
       // reverseSwap math (VAMM.sol):
       // Long close: newQuote = vQuote - sizeUsd → exitPrice = newQuote / vBase
       // Short close: newQuote = vQuote + sizeUsd → exitPrice = newQuote / vBase
       const exitPrice = pos.isLong
-        ? (vamm.vQuote - sizeUsdFloat) / vamm.vBase
-        : (vamm.vQuote + sizeUsdFloat) / vamm.vBase;
+        ? (vamm.vQuote - sizeUsd) / vamm.vBase
+        : (vamm.vQuote + sizeUsd) / vamm.vBase;
       const priceChange = pos.isLong
         ? (exitPrice - entry) / entry
         : (entry - exitPrice) / entry;
       return {
         pnlPercent: priceChange * 100, // P2P is always 1x
-        pnlUsd: (collateral / 1e18) * priceChange,
+        pnlUsd: collateral * priceChange,
       };
     }
 
@@ -610,15 +616,15 @@ export function PositionsPanel({
       : (entry - current) / entry;
     return {
       pnlPercent: priceChange * leverage * 100,
-      pnlUsd: (collateral / 1e18) * priceChange * leverage,
+      pnlUsd: collateral * priceChange * leverage,
     };
   };
 
   const MAINTENANCE_MARGIN = 0.1;
   const getLiquidationPrice = (pos: PositionData) => {
-    const entry = Number(pos.entryPrice) / 1e18;
-    const collateral = Number(pos.collateral);
-    const sizeUsd = Number(pos.sizeUsd);
+    const entry = toUsd(pos.entryPrice);
+    const collateral = toUsd(pos.collateral);
+    const sizeUsd = toUsd(pos.sizeUsd);
     if (collateral === 0) return 0;
     const leverage = sizeUsd / collateral;
     const moveToLiq = (1 - MAINTENANCE_MARGIN) / leverage;
@@ -756,14 +762,13 @@ export function PositionsPanel({
         <div className="space-y-2">
           {positions.map((pos) => {
             const pnl = pos.status === "open" || !pos.status ? getPnl(pos) : null;
-            const collateral = Number(pos.collateral);
-            const sizeUsd = Number(pos.sizeUsd);
+            const collateral = toUsd(pos.collateral);
+            const sizeUsd = toUsd(pos.sizeUsd);
             const leverage = collateral > 0 ? sizeUsd / collateral : 0;
             const isOpen = pos.status === "open" || !pos.status;
             const historyPnl = !isOpen && pos.realizedPnl ? (() => {
-              const realized = Number(pos.realizedPnl) / 1e18;
-              const col = Number(pos.collateral) / 1e18;
-              return { pnlUsd: realized, pnlPercent: col > 0 ? (realized / col) * 100 : 0 };
+              const realized = toUsd(pos.realizedPnl);
+              return { pnlUsd: realized, pnlPercent: collateral > 0 ? (realized / collateral) * 100 : 0 };
             })() : null;
             const feeCosts = pos.type === "trading" && isOpen ? getFeeCosts(pos) : null;
 
@@ -817,13 +822,13 @@ export function PositionsPanel({
                     )}
                   </div>
                   <div className="flex gap-4 mt-1 text-xs text-gray-400">
-                    <span>Size: ${(sizeUsd / 1e18).toFixed(0)}</span>
+                    <span>Size: ${sizeUsd.toFixed(0)}</span>
                     <span>
                       {pos.type === "p2p" ? "VAMM " : ""}Entry: $
-                      {(Number(pos.entryPrice) / 1e18).toFixed(2)}
+                      {toUsd(pos.entryPrice).toFixed(2)}
                     </span>
                     <span>
-                      Collateral: ${(collateral / 1e18).toFixed(2)}
+                      Collateral: ${collateral.toFixed(2)}
                     </span>
                     {pos.type === "trading" && isOpen && (
                       <span className="text-orange-400">
@@ -846,7 +851,7 @@ export function PositionsPanel({
                           Accrued: ~${feeCosts.accumulatedFees.toFixed(2)}
                         </span>
                       )}
-                      {feeCosts.effectiveCollateral < collateral / 1e18 && (
+                      {feeCosts.effectiveCollateral < collateral && (
                         <span className="text-gray-400">
                           Eff. Col: ${feeCosts.effectiveCollateral.toFixed(2)}
                         </span>

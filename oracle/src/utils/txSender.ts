@@ -15,6 +15,7 @@ function isNonceOrUnderpricedError(err: unknown): boolean {
   const msg = (err as Error).message || "";
   return (
     msg.includes("nonce too low") ||
+    msg.includes("nonce too high") ||
     msg.includes("replacement transaction underpriced") ||
     msg.includes("already known")
   );
@@ -41,14 +42,15 @@ export async function sendTx(request: Parameters<ReturnType<typeof getWalletClie
     if (localNonce === null) {
       localNonce = await publicClient.getTransactionCount({
         address: walletClient.account.address,
+        blockTag: 'pending',
       });
       logger.info("TxSender", `Initialized nonce: ${localNonce}`);
     }
 
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
       const baseGasPrice = await publicClient.getGasPrice();
-      // Bump gas by 10% per attempt: attempt 0 = 100%, attempt 1 = 110%, attempt 2 = 121%
-      let bumpedGas = baseGasPrice;
+      // Start at 1.2x base, then +10% per retry: attempt 0 = 120%, attempt 1 = 132%, attempt 2 = 145%
+      let bumpedGas = (baseGasPrice * 120n) / 100n;
       for (let i = 0; i < attempt; i++) {
         bumpedGas = (bumpedGas * GAS_BUMP_NUMERATOR) / GAS_BUMP_DENOMINATOR;
       }
@@ -67,6 +69,7 @@ export async function sendTx(request: Parameters<ReturnType<typeof getWalletClie
           const oldNonce = localNonce;
           localNonce = await publicClient.getTransactionCount({
             address: walletClient.account.address,
+            blockTag: 'pending',
           });
           logger.warn(
             "TxSender",
