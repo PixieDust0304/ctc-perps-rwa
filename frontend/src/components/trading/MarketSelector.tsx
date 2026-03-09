@@ -1,7 +1,7 @@
 "use client";
 
 import { FEEDS } from "../../lib/contracts";
-import { useReadContract } from "wagmi";
+import { useReadContracts } from "wagmi";
 import { formatEther, type Address } from "viem";
 import { CONTRACTS, CUSTODY_ABI, CUSTODY_ADDRESSES } from "../../lib/contracts";
 import { IconVault } from "../AppSidebar";
@@ -30,15 +30,26 @@ export function MarketSelector({
     ? CUSTODY_ADDRESSES[selectedFeed.id]
     : undefined;
 
-  const { data: availableBalance } = useReadContract({
-    address: custodyAddress as Address,
-    abi: CUSTODY_ABI,
-    functionName: "lpLiquidity",
-    query: { enabled: !!custodyAddress, refetchInterval: 10000 },
+  const { data: custodyData } = useReadContracts({
+    contracts: custodyAddress ? [
+      {
+        address: custodyAddress as Address,
+        abi: CUSTODY_ABI,
+        functionName: "lpLiquidity" as const,
+      },
+      {
+        address: custodyAddress as Address,
+        abi: CUSTODY_ABI,
+        functionName: "reservedBalance" as const,
+      },
+    ] : [],
+    query: { refetchInterval: 5000 },
   });
 
-  const liquidity = availableBalance
-    ? Number(formatEther(availableBalance as bigint))
+  const lpLiq = custodyData?.[0]?.result as bigint | undefined;
+  const reservedBal = custodyData?.[1]?.result as bigint | undefined;
+  const liquidity = lpLiq !== undefined && reservedBal !== undefined
+    ? Number(formatEther(lpLiq > reservedBal ? lpLiq - reservedBal : 0n))
     : 0;
 
   return (

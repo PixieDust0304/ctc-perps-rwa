@@ -78,8 +78,9 @@ async function main() {
   app.get("/api/candles/:feedId/:interval", async (req, res) => {
     const feedId = parseInt(req.params.feedId);
     const interval = req.params.interval;
-    const limit = parseInt((req.query.limit as string) || "100");
-    const candles = await getCandlesAsync(feedId, interval, limit);
+    const limit = parseInt((req.query.limit as string) || "500");
+    const before = req.query.before ? parseInt(req.query.before as string) : undefined;
+    const candles = await getCandlesAsync(feedId, interval, limit, before);
     res.json(candles);
   });
 
@@ -87,12 +88,13 @@ async function main() {
   app.get("/api/candles", async (req, res) => {
     const feedId = parseInt((req.query.feedId as string) || "0");
     const interval = (req.query.interval as string) || "1m";
-    const limit = parseInt((req.query.limit as string) || "100");
+    const limit = parseInt((req.query.limit as string) || "500");
+    const before = req.query.before ? parseInt(req.query.before as string) : undefined;
     if (!feedId) {
       res.status(400).json({ error: "feedId required" });
       return;
     }
-    const candles = await getCandlesAsync(feedId, interval, limit);
+    const candles = await getCandlesAsync(feedId, interval, limit, before);
     res.json(candles);
   });
 

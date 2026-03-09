@@ -156,30 +156,38 @@ export function getPriceMovement(
 export async function getCandlesAsync(
   feedId: number,
   interval: string,
-  limit: number = 100
+  limit: number = 500,
+  before?: number
 ): Promise<CandleData[]> {
   // In-memory candles are always the freshest (updated every tick)
-  const memCandles = getCandlesSync(feedId, interval, limit);
+  const memCandles = getCandlesSync(feedId, interval);
 
   // Merge with DB history to extend beyond current uptime
   if (getPrisma()) {
     try {
-      const dbCandles = await queryCandles(feedId, interval, limit);
+      const dbCandles = await queryCandles(feedId, interval, limit, before);
       if (dbCandles.length > 0) {
         // Deduplicate by timestamp — in-memory wins on conflicts (more current)
         const merged = new Map<number, CandleData>();
         for (const c of dbCandles) merged.set(c.timestamp, c);
-        for (const c of memCandles) merged.set(c.timestamp, c);
+        // Only merge in-memory if not paginating backwards
+        if (!before) {
+          for (const c of memCandles) merged.set(c.timestamp, c);
+        }
         return Array.from(merged.values())
-          .sort((a, b) => a.timestamp - b.timestamp)
-          .slice(-limit);
+          .sort((a, b) => a.timestamp - b.timestamp);
       }
     } catch {
       // DB query failed, fall through to in-memory only
     }
   }
 
-  return memCandles;
+  // In-memory only: apply limit + before filter
+  let filtered = memCandles;
+  if (before) {
+    filtered = filtered.filter(c => c.timestamp < before);
+  }
+  return filtered.slice(-limit);
 }
 
 /**
@@ -188,7 +196,7 @@ export async function getCandlesAsync(
 export function getCandlesSync(
   feedId: number,
   interval: string,
-  limit: number = 100
+  limit?: number
 ): CandleData[] {
   const results: CandleData[] = [];
   for (const [, candle] of candles) {
@@ -197,7 +205,7 @@ export function getCandlesSync(
     }
   }
   results.sort((a, b) => a.timestamp - b.timestamp);
-  return results.slice(-limit);
+  return limit ? results.slice(-limit) : results;
 }
 
 // Keep backward compat export

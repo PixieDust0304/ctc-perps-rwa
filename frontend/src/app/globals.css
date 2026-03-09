@@ -539,7 +539,7 @@ input[type="range"]::-webkit-slider-thumb {
 input[type="range"]::-webkit-slider-runnable-track {
   height: 8px !important;
   border-radius: 4px !important;
-  background: linear-gradient(90deg, #FF3B3B 0%, #FFD400 50%, #00E676 100%) !important;
+  background: linear-gradient(90deg, #00E676 0%, #FFD400 50%, #FF3B3B 100%) !important;
 }
 
 /* Slider thumb — Firefox */
@@ -556,5 +556,5 @@ input[type="range"]::-moz-range-thumb {
 input[type="range"]::-moz-range-track {
   height: 8px;
   border-radius: 4px;
-  background: linear-gradient(90deg, #FF3B3B 0%, #FFD400 50%, #00E676 100%);
+  background: linear-gradient(90deg, #00E676 0%, #FFD400 50%, #FF3B3B 100%);
 }

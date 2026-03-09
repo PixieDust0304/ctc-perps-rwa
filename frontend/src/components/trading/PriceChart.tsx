@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   createChart,
   type IChartApi,
@@ -8,22 +8,27 @@ import {
   ColorType,
   type LineData,
   type Time,
-  type SeriesMarker,
 } from "lightweight-charts";
 
+// How many candles to fetch on initial load per interval.
+// Target: fill ~150 visible candle slots + buffer for scrolling.
+const INITIAL_CANDLE_COUNT = 300;
+// How many candles to fetch per lazy-load page
+const LAZY_LOAD_PAGE = 500;
+
 const INTERVALS = [
-  { label: "1m", interval: "1m", limit: 2000, movementMs: 60_000 },
-  { label: "5m", interval: "5m", limit: 2000, movementMs: 300_000 },
-  { label: "10m", interval: "10m", limit: 1500, movementMs: 600_000 },
-  { label: "30m", interval: "30m", limit: 1500, movementMs: 1_800_000 },
-  { label: "1h", interval: "1h", limit: 1000, movementMs: 3_600_000 },
-  { label: "6h", interval: "6h", limit: 500, movementMs: 21_600_000 },
-  { label: "12h", interval: "12h", limit: 500, movementMs: 43_200_000 },
-  { label: "24h", interval: "1d", limit: 500, movementMs: 86_400_000 },
-  { label: "7d", interval: "1d", limit: 500, movementMs: 604_800_000 },
-  { label: "1M", interval: "1d", limit: 500, movementMs: 2_592_000_000 },
-  { label: "6M", interval: "1d", limit: 500, movementMs: 15_552_000_000 },
-  { label: "1Y", interval: "1d", limit: 500, movementMs: 31_536_000_000 },
+  { label: "1m", interval: "1m", movementMs: 60_000 },
+  { label: "5m", interval: "5m", movementMs: 300_000 },
+  { label: "10m", interval: "10m", movementMs: 600_000 },
+  { label: "30m", interval: "30m", movementMs: 1_800_000 },
+  { label: "1h", interval: "1h", movementMs: 3_600_000 },
+  { label: "6h", interval: "6h", movementMs: 21_600_000 },
+  { label: "12h", interval: "12h", movementMs: 43_200_000 },
+  { label: "24h", interval: "1d", movementMs: 86_400_000 },
+  { label: "7d", interval: "1d", movementMs: 604_800_000 },
+  { label: "1M", interval: "1d", movementMs: 2_592_000_000 },
+  { label: "6M", interval: "1d", movementMs: 15_552_000_000 },
+  { label: "1Y", interval: "1d", movementMs: 31_536_000_000 },
 ] as const;
 
 interface PriceChartProps {
@@ -65,6 +70,12 @@ export function PriceChart({
   const marketStatesRef = useRef<{ state: string; timestamp: number }[]>([]);
   const candleTimesRef = useRef<number[]>([]);
   const startPriceRef = useRef<number>(0);
+
+  // Lazy loading state
+  const allPointsRef = useRef<LineData<Time>[]>([]);
+  const earliestTimestampRef = useRef<number>(0); // earliest candle ms timestamp loaded
+  const isLoadingMoreRef = useRef(false);
+  const hasMoreDataRef = useRef(true);
 
   const [selectedIdx, setSelectedIdx] = useState(0); // default 1m
   const [movement, setMovement] = useState<{ changePercent: number } | null>(null);
@@ -292,10 +303,66 @@ export function PriceChart({
     // Also redraw on visible range changes (zoom, scroll without crosshair)
     chart.timeScale().subscribeVisibleTimeRangeChange(drawOverlayLines);
 
+    // Reset lazy-load state on interval/feed change
+    allPointsRef.current = [];
+    earliestTimestampRef.current = 0;
+    isLoadingMoreRef.current = false;
+    hasMoreDataRef.current = true;
+
+    const applyPointsToChart = (points: LineData<Time>[]) => {
+      if (!seriesRef.current || !chartRef.current) return;
+
+      // Store candle times for snapping market state markers
+      candleTimesRef.current = points.map(p => p.time as number);
+
+      seriesRef.current.setData(points);
+
+      // Set visible range to show the last ~150 candles (fills the viewport)
+      // instead of fitContent() which stretches sparse data across the whole view
+      const totalBars = points.length;
+      const visibleBars = 150;
+      if (totalBars > visibleBars) {
+        chartRef.current.timeScale().setVisibleLogicalRange({
+          from: totalBars - visibleBars - 5,
+          to: totalBars + 5,
+        });
+      } else {
+        chartRef.current.timeScale().fitContent();
+      }
+    };
+
+    const computeMovement = (points: LineData<Time>[]) => {
+      if (points.length >= 2) {
+        const latestPrice = points[points.length - 1].value;
+        const targetTimeSec = Math.floor((Date.now() - selected.movementMs) / 1000);
+        const oldestTimeSec = points[0].time as number;
+        let compPrice: number;
+        if (targetTimeSec <= oldestTimeSec) {
+          compPrice = points[0].value;
+        } else {
+          compPrice = points[0].value;
+          let bestDist = Math.abs((points[0].time as number) - targetTimeSec);
+          for (const p of points) {
+            const dist = Math.abs((p.time as number) - targetTimeSec);
+            if (dist < bestDist) {
+              bestDist = dist;
+              compPrice = p.value;
+            }
+          }
+        }
+        startPriceRef.current = compPrice;
+        const changePercent = compPrice > 0 ? ((latestPrice - compPrice) / compPrice) * 100 : 0;
+        if (feedIdRef.current === feedId) setMovement({ changePercent });
+      } else {
+        startPriceRef.current = 0;
+        if (feedIdRef.current === feedId) setMovement(null);
+      }
+    };
+
     const fetchCandles = async () => {
       try {
         const res = await fetch(
-          `${apiUrl}/api/candles?feedId=${feedId}&interval=${selected.interval}&limit=${selected.limit}`
+          `${apiUrl}/api/candles?feedId=${feedId}&interval=${selected.interval}&limit=${INITIAL_CANDLE_COUNT}`
         );
         if (!res.ok) return;
         const data = await res.json();
@@ -314,48 +381,92 @@ export function PriceChart({
             })
           );
 
-          // Store candle times for snapping market state markers
-          candleTimesRef.current = sorted.map(
-            (c: { timestamp: number }) => Math.floor(c.timestamp / 1000)
-          );
+          allPointsRef.current = points;
+          earliestTimestampRef.current = sorted[0].timestamp;
+          hasMoreDataRef.current = data.length >= INITIAL_CANDLE_COUNT;
 
-          seriesRef.current?.setData(points);
-          chartRef.current?.timeScale().fitContent();
-
-          // Compute movement: latest price vs price N ago (matching the label)
-          // If data doesn't go back far enough, use the oldest candle we have
-          if (points.length >= 2) {
-            const latestPrice = points[points.length - 1].value;
-            const targetTimeSec = Math.floor((Date.now() - selected.movementMs) / 1000);
-            const oldestTimeSec = points[0].time as number;
-            let compPrice: number;
-            if (targetTimeSec <= oldestTimeSec) {
-              // Not enough data for full window — use oldest available
-              compPrice = points[0].value;
-            } else {
-              // Find candle closest to targetTimeSec
-              compPrice = points[0].value;
-              let bestDist = Math.abs((points[0].time as number) - targetTimeSec);
-              for (const p of points) {
-                const dist = Math.abs((p.time as number) - targetTimeSec);
-                if (dist < bestDist) {
-                  bestDist = dist;
-                  compPrice = p.value;
-                }
-              }
-            }
-            startPriceRef.current = compPrice;
-            const changePercent = compPrice > 0 ? ((latestPrice - compPrice) / compPrice) * 100 : 0;
-            if (feedIdRef.current === feedId) setMovement({ changePercent });
-          } else {
-            startPriceRef.current = 0;
-            if (feedIdRef.current === feedId) setMovement(null);
-          }
+          applyPointsToChart(points);
+          computeMovement(points);
         }
       } catch {
         // Oracle API not available
       }
     };
+
+    // Lazy load: fetch older candles when user scrolls back
+    const loadOlderCandles = async () => {
+      if (isLoadingMoreRef.current || !hasMoreDataRef.current) return;
+      if (!earliestTimestampRef.current) return;
+      isLoadingMoreRef.current = true;
+
+      try {
+        const res = await fetch(
+          `${apiUrl}/api/candles?feedId=${feedId}&interval=${selected.interval}&limit=${LAZY_LOAD_PAGE}&before=${earliestTimestampRef.current}`
+        );
+        if (!res.ok) return;
+        const data = await res.json();
+        if (feedIdRef.current !== feedId) return;
+
+        if (Array.isArray(data) && data.length > 0) {
+          const sorted = [...data].sort(
+            (a: { timestamp: number }, b: { timestamp: number }) =>
+              a.timestamp - b.timestamp
+          );
+
+          const olderPoints: LineData<Time>[] = sorted.map(
+            (c: { timestamp: number; close: string }) => ({
+              time: (c.timestamp / 1000) as Time,
+              value: Number(c.close) / 1e18,
+            })
+          );
+
+          earliestTimestampRef.current = sorted[0].timestamp;
+          hasMoreDataRef.current = data.length >= LAZY_LOAD_PAGE;
+
+          // Prepend older data and re-set the series
+          // Deduplicate by time
+          const existingTimes = new Set(allPointsRef.current.map(p => p.time));
+          const newPoints = olderPoints.filter(p => !existingTimes.has(p.time));
+          allPointsRef.current = [...newPoints, ...allPointsRef.current];
+
+          // Preserve the current visible range so the view doesn't jump
+          const currentRange = chartRef.current?.timeScale().getVisibleLogicalRange();
+          seriesRef.current?.setData(allPointsRef.current);
+          candleTimesRef.current = allPointsRef.current.map(p => p.time as number);
+
+          if (currentRange) {
+            // Shift range to account for prepended candles
+            chartRef.current?.timeScale().setVisibleLogicalRange({
+              from: currentRange.from + newPoints.length,
+              to: currentRange.to + newPoints.length,
+            });
+          }
+        } else {
+          hasMoreDataRef.current = false;
+        }
+      } catch {
+        // Failed to load more candles
+      } finally {
+        isLoadingMoreRef.current = false;
+      }
+    };
+
+    // Subscribe to visible range changes for lazy loading
+    const onVisibleRangeChange = () => {
+      const range = chart.timeScale().getVisibleLogicalRange();
+      if (!range) return;
+      const totalBars = allPointsRef.current.length;
+      if (totalBars === 0) return;
+
+      // If user has scrolled so that the leftmost visible bar is within
+      // the first 1/3 of loaded data, fetch more
+      const scrollThreshold = totalBars / 3;
+      if (range.from <= scrollThreshold && hasMoreDataRef.current) {
+        loadOlderCandles();
+      }
+    };
+
+    chart.timeScale().subscribeVisibleLogicalRangeChange(onVisibleRangeChange);
 
     const fetchMarketStates = async () => {
       try {
@@ -391,6 +502,7 @@ export function PriceChart({
     return () => {
       chart.unsubscribeCrosshairMove(drawOverlayLines);
       chart.timeScale().unsubscribeVisibleTimeRangeChange(drawOverlayLines);
+      chart.timeScale().unsubscribeVisibleLogicalRangeChange(onVisibleRangeChange);
       window.removeEventListener("resize", handleResize);
       if (overlayCanvasRef.current) {
         overlayCanvasRef.current.remove();
@@ -400,7 +512,7 @@ export function PriceChart({
       chartRef.current = null;
       seriesRef.current = null;
     };
-  }, [feedId, selectedIdx, apiUrl, selected.interval, selected.limit, selected.movementMs]);
+  }, [feedId, selectedIdx, apiUrl, selected.interval, selected.movementMs]);
 
   // Live price tick update
   useEffect(() => {
@@ -410,10 +522,16 @@ export function PriceChart({
     const intervalMs = 60000;
     const now = Math.floor(Date.now() / intervalMs) * (intervalMs / 1000);
 
-    seriesRef.current.update({
-      time: now as Time,
-      value: currentPrice,
-    });
+    const point = { time: now as Time, value: currentPrice };
+    seriesRef.current.update(point);
+
+    // Keep allPointsRef in sync for lazy-load range calculations
+    const pts = allPointsRef.current;
+    if (pts.length > 0 && pts[pts.length - 1].time === point.time) {
+      pts[pts.length - 1] = point;
+    } else {
+      pts.push(point);
+    }
 
     // Update movement live
     const sp = startPriceRef.current;

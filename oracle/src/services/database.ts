@@ -116,13 +116,18 @@ export async function persistCandle(candle: CandleData): Promise<void> {
 export async function queryCandles(
   feedId: number,
   interval: string,
-  limit: number
+  limit: number = 500,
+  before?: number
 ): Promise<CandleData[]> {
   if (!prisma) return [];
 
   try {
+    const where: Record<string, unknown> = { feedId, interval };
+    if (before) {
+      where.timestamp = { lt: new Date(before) };
+    }
     const rows = await prisma.candle.findMany({
-      where: { feedId, interval },
+      where,
       orderBy: { timestamp: "desc" },
       take: limit,
     });
