@@ -8,6 +8,19 @@ import { broadcastPositionUpdate, broadcastVammPrices } from "../services/websoc
 import { storePriceTicks } from "../services/priceStore.js";
 import type { Position, P2PPosition } from "../types/index.js";
 
+/**
+ * Safely convert a Prisma Decimal (or any numeric-like value) to BigInt
+ * without stripping trailing zeros.
+ */
+function decimalToBigInt(val: unknown): bigint {
+  const s = String(val);
+  // Strip decimal point and any fractional digits (Prisma Decimals store integers as "12345.0")
+  const dotIdx = s.indexOf(".");
+  const intPart = dotIdx >= 0 ? s.slice(0, dotIdx) : s;
+  if (!intPart || intPart === "-") return 0n;
+  return BigInt(intPart);
+}
+
 async function emitVammPrice(feedId: number): Promise<void> {
   if (!config.vammAddress) return;
   try {
@@ -76,9 +89,9 @@ export async function initPositions(): Promise<void> {
           owner: row.owner as `0x${string}`,
           feedId: row.feedId,
           isLong: row.isLong,
-          collateral: BigInt(row.collateral.toString().replace(".", "").replace(/0+$/, "") || "0"),
-          sizeUsd: BigInt(row.sizeUsd.toString().replace(".", "").replace(/0+$/, "") || "0"),
-          entryPrice: BigInt(row.entryPrice.toString().replace(".", "").replace(/0+$/, "") || "0"),
+          collateral: decimalToBigInt(row.collateral),
+          sizeUsd: decimalToBigInt(row.sizeUsd),
+          entryPrice: decimalToBigInt(row.entryPrice),
           openTimestamp: 0n,
           cumulativeBaseFeeSnapshot: 0n,
           cumulativeFundingSnapshot: 0n,
@@ -94,9 +107,9 @@ export async function initPositions(): Promise<void> {
           owner: row.owner as `0x${string}`,
           feedId: row.feedId,
           isLong: row.isLong,
-          collateral: BigInt(row.collateral.toString().replace(".", "").replace(/0+$/, "") || "0"),
-          sizeUsd: BigInt(row.sizeUsd.toString().replace(".", "").replace(/0+$/, "") || "0"),
-          entryPrice: BigInt(row.entryPrice.toString().replace(".", "").replace(/0+$/, "") || "0"),
+          collateral: decimalToBigInt(row.collateral),
+          sizeUsd: decimalToBigInt(row.sizeUsd),
+          entryPrice: decimalToBigInt(row.entryPrice),
           openTimestamp: 0n,
           isSettled: false,
         });
@@ -868,6 +881,10 @@ export async function enrichPosition(positionId: Hex): Promise<Position | undefi
       return undefined;
     }
 
+    // Update ALL fields from on-chain data (also fixes DB-loaded positions with stale/corrupted values)
+    pos.collateral = data.collateral;
+    pos.sizeUsd = data.sizeUsd;
+    pos.entryPrice = data.entryPrice;
     pos.openTimestamp = data.openTimestamp;
     pos.cumulativeBaseFeeSnapshot = data.cumulativeBaseFeeSnapshot;
     pos.cumulativeFundingSnapshot = data.cumulativeFundingSnapshot;

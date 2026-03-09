@@ -50,6 +50,7 @@ export async function pushPrices(ticks: PriceTick[]): Promise<void> {
   const timestamps = filteredTicks.map((t) => BigInt(Math.floor(t.timestamp / 1000)));
   const freshFlags = filteredTicks.map((t) => t.fresh);
 
+  let pushSucceeded = false;
   try {
     const signature = await signPriceBatch(feedIds, rawPrices, timestamps, freshFlags);
 
@@ -75,12 +76,16 @@ export async function pushPrices(ticks: PriceTick[]): Promise<void> {
 
     const txHash = await walletClient.writeContract(request);
     logger.info("ChainPusher", `Prices pushed, tx: ${txHash}`);
+    pushSucceeded = true;
   } catch (err) {
     const msg = (err as Error).message || "";
     if (msg.includes("stale update")) {
+      // On-chain already has this data — safe to run liquidation against current on-chain state
       logger.debug("ChainPusher", "Skipping: on-chain timestamps are current");
+      pushSucceeded = true;
     } else if (msg.includes("already known")) {
       logger.debug("ChainPusher", "Skipping: tx already in mempool");
+      pushSucceeded = true;
     } else if (msg.includes("replacement transaction underpriced")) {
       logger.debug("ChainPusher", "Skipping: nonce conflict (overlapping push)");
     } else {
@@ -95,16 +100,21 @@ export async function pushPrices(ticks: PriceTick[]): Promise<void> {
     lastPushedTimestamps[tick.feedId] = tick.timestamp;
   }
 
-  // Post-push hooks: fee accrual + liquidation (same tick)
+  // Post-push hooks: fee accrual + liquidation
+  // Only run liquidation when we know on-chain price is current (push succeeded or was already up-to-date)
   try {
     await maybeTriggerAccrual();
   } catch (err) {
     logger.warn("ChainPusher", `Fee accrual error: ${(err as Error).message}`);
   }
 
-  try {
-    await checkAndLiquidateAll(filteredTicks);
-  } catch (err) {
-    logger.warn("ChainPusher", `Liquidation check error: ${(err as Error).message}`);
+  if (pushSucceeded) {
+    try {
+      await checkAndLiquidateAll(filteredTicks);
+    } catch (err) {
+      logger.warn("ChainPusher", `Liquidation check error: ${(err as Error).message}`);
+    }
+  } else {
+    logger.warn("ChainPusher", "Skipping liquidation check — on-chain price not confirmed current");
   }
 }

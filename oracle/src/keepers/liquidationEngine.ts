@@ -48,15 +48,24 @@ export async function checkAndLiquidateAll(ticks: PriceTick[]): Promise<void> {
     if (!custodyState) continue;
 
     const liquidatable: Hex[] = [];
+    let skippedEnrich = 0;
 
     for (const pos of positions) {
       // Enrich with on-chain fee snapshots if needed
       const enriched = await enrichPosition(pos.id);
-      if (!enriched || enriched.openTimestamp === 0n) continue;
+      if (!enriched || enriched.openTimestamp === 0n) {
+        skippedEnrich++;
+        continue;
+      }
 
       if (isLiquidatable(enriched, currentPrice, custodyState)) {
+        logger.info("Liquidation", `Liquidatable: ${pos.id.slice(0, 10)}… ${enriched.isLong ? "LONG" : "SHORT"} collateral=${enriched.collateral} size=${enriched.sizeUsd} entry=${enriched.entryPrice} price=${currentPrice}`);
         liquidatable.push(pos.id);
       }
+    }
+
+    if (skippedEnrich > 0) {
+      logger.warn("Liquidation", `Skipped ${skippedEnrich}/${positions.length} positions for feed ${feedId} (enrichment pending)`);
     }
 
     if (liquidatable.length === 0) continue;
