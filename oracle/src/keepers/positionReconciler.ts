@@ -33,6 +33,68 @@ export async function reconcile(): Promise<void> {
     // Phase 1: Verify existing open positions in DB
     const openPositionIds = await getAllOpenPositionIds();
 
+    // Pre-fetch close event logs so we can extract realizedPnl for stale positions
+    const currentBlock = await client.getBlockNumber();
+    const fromBlock = currentBlock > RECONCILE_BLOCK_LOOKBACK ? currentBlock - RECONCILE_BLOCK_LOOKBACK : 0n;
+
+    // Build lookup maps: positionId -> { realizedPnl, txHash } from close events
+    const tradingCloseMap = new Map<string, { realizedPnl: string; txHash: string }>();
+    const p2pCloseMap = new Map<string, { realizedPnl: string; txHash: string }>();
+
+    if (config.tradingAddress && openPositionIds.some(p => p.type === "trading")) {
+      try {
+        const closeLogs = await client.getLogs({
+          address: config.tradingAddress as Hex,
+          event: {
+            type: "event",
+            name: "PositionClosed",
+            inputs: [
+              { name: "positionId", type: "bytes32", indexed: true },
+              { name: "realizedPnl", type: "int256", indexed: false },
+            ],
+          },
+          fromBlock,
+          toBlock: "latest",
+        });
+        for (const log of closeLogs) {
+          const args = log.args as { positionId: Hex; realizedPnl: bigint };
+          tradingCloseMap.set(args.positionId, {
+            realizedPnl: args.realizedPnl.toString(),
+            txHash: log.transactionHash ?? "",
+          });
+        }
+      } catch {
+        // Close event scan failed — reconciler will still close without PnL
+      }
+    }
+
+    if (config.p2pTradingAddress && openPositionIds.some(p => p.type === "p2p")) {
+      try {
+        const closeLogs = await client.getLogs({
+          address: config.p2pTradingAddress as Hex,
+          event: {
+            type: "event",
+            name: "P2PPositionClosed",
+            inputs: [
+              { name: "positionId", type: "bytes32", indexed: true },
+              { name: "realizedPnl", type: "int256", indexed: false },
+            ],
+          },
+          fromBlock,
+          toBlock: "latest",
+        });
+        for (const log of closeLogs) {
+          const args = log.args as { positionId: Hex; realizedPnl: bigint };
+          p2pCloseMap.set(args.positionId, {
+            realizedPnl: args.realizedPnl.toString(),
+            txHash: log.transactionHash ?? "",
+          });
+        }
+      } catch {
+        // Close event scan failed — reconciler will still close without PnL
+      }
+    }
+
     for (const { positionId, type } of openPositionIds) {
       try {
         if (type === "trading" && config.tradingAddress) {
@@ -45,9 +107,15 @@ export async function reconcile(): Promise<void> {
 
           const data = result as { owner: Hex; collateral: bigint };
           if (data.owner === ZERO_ADDRESS || data.collateral === 0n) {
-            await updatePositionStatus(positionId, "closed");
+            const closeData = tradingCloseMap.get(positionId);
+            await updatePositionStatus(
+              positionId,
+              "closed",
+              closeData?.realizedPnl,
+              closeData?.txHash || undefined,
+            );
             fixed++;
-            logger.info("Reconciler", `Fixed stale trading position: ${positionId}`);
+            logger.info("Reconciler", `Fixed stale trading position: ${positionId}${closeData ? ` (PnL: ${closeData.realizedPnl})` : ""}`);
           } else {
             verified++;
           }
@@ -61,9 +129,15 @@ export async function reconcile(): Promise<void> {
 
           const data = result as { owner: Hex; collateral: bigint; isSettled: boolean };
           if (data.owner === ZERO_ADDRESS || data.collateral === 0n || data.isSettled) {
-            await updatePositionStatus(positionId, "settled");
+            const closeData = p2pCloseMap.get(positionId);
+            await updatePositionStatus(
+              positionId,
+              "settled",
+              closeData?.realizedPnl,
+              closeData?.txHash || undefined,
+            );
             fixed++;
-            logger.info("Reconciler", `Fixed stale P2P position: ${positionId}`);
+            logger.info("Reconciler", `Fixed stale P2P position: ${positionId}${closeData ? ` (PnL: ${closeData.realizedPnl})` : ""}`);
           } else {
             verified++;
           }
@@ -74,9 +148,6 @@ export async function reconcile(): Promise<void> {
     }
 
     // Phase 2: Scan recent blocks for missed positions
-    const currentBlock = await client.getBlockNumber();
-    const fromBlock = currentBlock > RECONCILE_BLOCK_LOOKBACK ? currentBlock - RECONCILE_BLOCK_LOOKBACK : 0n;
-
     const existingIds = new Set(openPositionIds.map((p) => p.positionId));
 
     // Scan trading events
