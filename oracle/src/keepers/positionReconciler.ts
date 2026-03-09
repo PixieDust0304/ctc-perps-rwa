@@ -14,7 +14,7 @@ const RECONCILE_BLOCK_LOOKBACK = BigInt(process.env.RECONCILE_BLOCK_LOOKBACK || 
  */
 export async function reconcile(): Promise<void> {
   if (!getPrisma()) {
-    logger.debug("Reconciler", "No DB available, skipping reconciliation");
+    logger.warn("Reconciler", "No DB available, skipping reconciliation");
     return;
   }
 

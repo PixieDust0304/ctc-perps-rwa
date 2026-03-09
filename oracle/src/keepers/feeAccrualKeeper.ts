@@ -27,7 +27,7 @@ export async function maybeTriggerAccrual(): Promise<void> {
     transport: http(config.rpcUrl),
   });
 
-  const results = await Promise.allSettled(
+  await Promise.allSettled(
     entries.map(async ([feedId, address]) => {
       const addr = address as Hex;
       try {
@@ -38,10 +38,10 @@ export async function maybeTriggerAccrual(): Promise<void> {
           account: walletClient.account,
         });
         const txHash = await walletClient.writeContract(request);
-        logger.debug("FeeAccrual", `accrueFees() for feed ${feedId}, tx: ${txHash}`);
+        logger.info("FeeAccrual", `accrueFees() for feed ${feedId}, tx: ${txHash}`);
       } catch (err) {
-        // accrueFees may revert if called too early — that's fine
-        logger.debug("FeeAccrual", `accrueFees() skipped for feed ${feedId}: ${(err as Error).message}`);
+        // accrueFees may revert if interval not elapsed — expected during rapid pushes
+        logger.warn("FeeAccrual", `accrueFees() skipped for feed ${feedId}: ${(err as Error).message.slice(0, 150)}`);
       }
     })
   );

@@ -25,7 +25,7 @@ export async function checkAndLiquidateAll(ticks: PriceTick[]): Promise<void> {
   // Build price map from current ticks
   const priceMap = new Map<number, bigint>();
   for (const tick of ticks) {
-    priceMap.set(tick.feedId, tick.rawPrice);
+    priceMap.set(tick.feedId, tick.price);
   }
 
   // Refresh custody state for feeds with prices
@@ -77,8 +77,8 @@ export async function checkAndLiquidateAll(ticks: PriceTick[]): Promise<void> {
           const txHash = await walletClient.writeContract(request);
           logger.info("Liquidation", `Liquidated ${positionId}, tx: ${txHash}`);
         } catch (err) {
-          // Position may no longer be liquidatable (race with user close)
-          logger.debug("Liquidation", `Failed to liquidate ${positionId}: ${(err as Error).message}`);
+          // Simulation reverted — position not actually liquidatable (race, stale state, or pre-check mismatch)
+          logger.warn("Liquidation", `Simulation reverted for ${positionId}: ${(err as Error).message.slice(0, 200)}`);
         }
       })
     );
@@ -167,7 +167,7 @@ async function refreshCustodyStates(feedIds: number[]): Promise<void> {
           cumulativeFundingPerUnit: funding as bigint,
         });
       } catch (err) {
-        logger.debug("Liquidation", `Failed to read custody state for feed ${feedId}: ${(err as Error).message}`);
+        logger.warn("Liquidation", `Failed to read custody state for feed ${feedId}: ${(err as Error).message.slice(0, 200)}`);
       }
     })
   );

@@ -176,6 +176,18 @@ export async function logMarketState(
   if (!prisma) return;
 
   try {
+    // Dedup: skip if the last entry for this feed already has the same state
+    // (prevents duplicates on oracle restart where feedStates resets)
+    const last = await prisma.marketStateLog.findFirst({
+      where: { feedId },
+      orderBy: { timestamp: "desc" },
+      select: { state: true },
+    });
+    if (last && last.state === state) {
+      logger.info("DB", `Market state ${state} for feed ${feedId} already logged, skipping duplicate`);
+      return;
+    }
+
     await prisma.marketStateLog.create({
       data: {
         feedId,

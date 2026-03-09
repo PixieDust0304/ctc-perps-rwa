@@ -304,7 +304,7 @@ async function settleAllP2PPositions(feedId: number): Promise<void> {
     const txHash = await walletClient.writeContract(request);
     logger.info("P2PSettlement", `Swept leftover USDC for feed ${feedId}, tx: ${txHash}`);
   } catch (err) {
-    logger.debug("P2PSettlement", `Sweep skipped for feed ${feedId}: ${(err as Error).message}`);
+    logger.warn("P2PSettlement", `Sweep skipped for feed ${feedId}: ${(err as Error).message.slice(0, 200)}`);
   }
 
   logger.info("P2PSettlement", `Settlement complete for feed ${feedId}`);
