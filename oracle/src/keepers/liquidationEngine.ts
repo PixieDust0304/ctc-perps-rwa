@@ -87,7 +87,7 @@ export async function checkAndLiquidateAll(ticks: PriceTick[]): Promise<void> {
     logger.info("Liquidation", `Found ${liquidatable.length} liquidatable positions for feed ${feedId}`);
 
     // Submit liquidation txs in parallel
-    const results = await Promise.allSettled(
+    await Promise.allSettled(
       liquidatable.map(async (positionId) => {
         try {
           const { request } = await publicClient.simulateContract({
@@ -155,44 +155,44 @@ function isLiquidatable(
 async function refreshCustodyStates(feedIds: number[]): Promise<void> {
   const publicClient = getPublicClient();
 
-  // Build multicall contracts array: 3 reads per feed
   const validFeeds: { feedId: number; addr: Hex }[] = [];
-  const contracts: { address: Hex; abi: typeof CustodyABI; functionName: string }[] = [];
-
   for (const feedId of feedIds) {
     const addr = config.custodyAddresses[feedId];
     if (!addr) continue;
     validFeeds.push({ feedId, addr: addr as Hex });
-    contracts.push(
-      { address: addr as Hex, abi: CustodyABI, functionName: "cumulativeLongBaseFeePerUnit" },
-      { address: addr as Hex, abi: CustodyABI, functionName: "cumulativeShortBaseFeePerUnit" },
-      { address: addr as Hex, abi: CustodyABI, functionName: "cumulativeFundingPerUnit" },
-    );
   }
+  if (validFeeds.length === 0) return;
 
-  if (contracts.length === 0) return;
+  // Parallel individual reads (CTC Testnet has no multicall3)
+  await Promise.allSettled(
+    validFeeds.map(async ({ feedId, addr }) => {
+      try {
+        const [longBaseFee, shortBaseFee, funding] = await Promise.all([
+          publicClient.readContract({
+            address: addr,
+            abi: CustodyABI,
+            functionName: "cumulativeLongBaseFeePerUnit",
+          }),
+          publicClient.readContract({
+            address: addr,
+            abi: CustodyABI,
+            functionName: "cumulativeShortBaseFeePerUnit",
+          }),
+          publicClient.readContract({
+            address: addr,
+            abi: CustodyABI,
+            functionName: "cumulativeFundingPerUnit",
+          }),
+        ]);
 
-  try {
-    const results = await publicClient.multicall({ contracts });
-
-    // Parse results in groups of 3 (one group per feed)
-    for (let i = 0; i < validFeeds.length; i++) {
-      const base = i * 3;
-      const longRes = results[base];
-      const shortRes = results[base + 1];
-      const fundingRes = results[base + 2];
-
-      if (longRes.status === "success" && shortRes.status === "success" && fundingRes.status === "success") {
-        custodyStateCache.set(validFeeds[i].feedId, {
-          cumulativeLongBaseFeePerUnit: longRes.result as bigint,
-          cumulativeShortBaseFeePerUnit: shortRes.result as bigint,
-          cumulativeFundingPerUnit: fundingRes.result as bigint,
+        custodyStateCache.set(feedId, {
+          cumulativeLongBaseFeePerUnit: longBaseFee as bigint,
+          cumulativeShortBaseFeePerUnit: shortBaseFee as bigint,
+          cumulativeFundingPerUnit: funding as bigint,
         });
-      } else {
-        logger.warn("Liquidation", `Multicall partial failure for feed ${validFeeds[i].feedId}`);
+      } catch (err) {
+        logger.warn("Liquidation", `Failed to read custody state for feed ${feedId}: ${(err as Error).message.slice(0, 200)}`);
       }
-    }
-  } catch (err) {
-    logger.warn("Liquidation", `Multicall custody read failed: ${(err as Error).message.slice(0, 200)}`);
-  }
+    })
+  );
 }
