@@ -146,14 +146,7 @@ export async function pushPrices(ticks: PriceTick[]): Promise<void> {
     }
   }
 
-  // Post-push hooks: fee accrual + liquidation
-  // Only run liquidation when we know on-chain price is current (push succeeded or was already up-to-date)
-  try {
-    await maybeTriggerAccrual();
-  } catch (err) {
-    logger.warn("ChainPusher", `Fee accrual error: ${(err as Error).message}`);
-  }
-
+  // Post-push hooks: liquidation (time-critical) first, fee accrual (non-critical) fire-and-forget
   if (pushSucceeded) {
     try {
       await checkAndLiquidateAll(filteredTicks);
@@ -163,6 +156,11 @@ export async function pushPrices(ticks: PriceTick[]): Promise<void> {
   } else {
     logger.warn("ChainPusher", "Skipping liquidation check — on-chain price not confirmed current");
   }
+
+  // Fee accrual runs concurrently — never blocks the liquidation path
+  maybeTriggerAccrual().catch((err) =>
+    logger.warn("ChainPusher", `Fee accrual error: ${(err as Error).message}`)
+  );
 }
 
 /** Reset module-level state (for testing only) */

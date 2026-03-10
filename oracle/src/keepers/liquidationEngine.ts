@@ -17,6 +17,18 @@ const PRECISION = 10n ** 18n;
 // Cache custody state per feed (refreshed each tick)
 const custodyStateCache = new Map<number, CustodyState>();
 
+// Module-level singleton — avoids recreating on every tick
+let _publicClient: ReturnType<typeof createPublicClient>;
+function getPublicClient() {
+  if (!_publicClient) {
+    _publicClient = createPublicClient({
+      chain: getChain(),
+      transport: http(config.rpcUrl),
+    });
+  }
+  return _publicClient;
+}
+
 /**
  * Called after every price push — checks all tracked positions for liquidation
  */
@@ -29,14 +41,11 @@ export async function checkAndLiquidateAll(ticks: PriceTick[]): Promise<void> {
     priceMap.set(tick.feedId, tick.price);
   }
 
-  // Refresh custody state for feeds with prices
+  // Refresh custody state for feeds with prices (single multicall)
   await refreshCustodyStates(Array.from(priceMap.keys()));
 
   const walletClient = getWalletClient();
-  const publicClient = createPublicClient({
-    chain: getChain(),
-    transport: http(config.rpcUrl),
-  });
+  const publicClient = getPublicClient();
 
   for (const [feedId, currentPrice] of priceMap) {
     // Don't run liquidations during settlement
@@ -48,20 +57,24 @@ export async function checkAndLiquidateAll(ticks: PriceTick[]): Promise<void> {
     const custodyState = custodyStateCache.get(feedId);
     if (!custodyState) continue;
 
+    // Batch-enrich all positions in parallel (single RPC round trip for cache misses)
+    const enrichResults = await Promise.all(
+      positions.map(pos => enrichPosition(pos.id))
+    );
+
     const liquidatable: Hex[] = [];
     let skippedEnrich = 0;
 
-    for (const pos of positions) {
-      // Enrich with on-chain fee snapshots if needed
-      const enriched = await enrichPosition(pos.id);
+    for (let i = 0; i < positions.length; i++) {
+      const enriched = enrichResults[i];
       if (!enriched || enriched.openTimestamp === 0n) {
         skippedEnrich++;
         continue;
       }
 
       if (isLiquidatable(enriched, currentPrice, custodyState)) {
-        logger.info("Liquidation", `Liquidatable: ${pos.id.slice(0, 10)}… ${enriched.isLong ? "LONG" : "SHORT"} collateral=${enriched.collateral} size=${enriched.sizeUsd} entry=${enriched.entryPrice} price=${currentPrice}`);
-        liquidatable.push(pos.id);
+        logger.info("Liquidation", `Liquidatable: ${positions[i].id.slice(0, 10)}… ${enriched.isLong ? "LONG" : "SHORT"} collateral=${enriched.collateral} size=${enriched.sizeUsd} entry=${enriched.entryPrice} price=${currentPrice}`);
+        liquidatable.push(positions[i].id);
       }
     }
 
@@ -122,14 +135,12 @@ function isLiquidatable(
   const signedDelta = pos.isLong ? fundingDelta : -fundingDelta;
   const accumulatedFunding = (signedDelta * pos.sizeUsd) / PRECISION;
 
-  // Effective collateral
+  // Effective collateral — mirrors PositionUtils.effectiveCollateral exactly
   let effective = pos.collateral - accumulatedFees;
   // Subtract funding (can be negative = trader earns)
-  if (accumulatedFunding > 0n) {
-    effective -= accumulatedFunding;
-  } else {
-    effective += (-accumulatedFunding);
-  }
+  effective -= accumulatedFunding;
+  // Match on-chain: if fees+funding consumed all collateral, position is dead (PnL can't save it)
+  if (effective <= 0n) return true;
   if (isProfit) {
     effective += pnl;
   } else {
@@ -142,43 +153,46 @@ function isLiquidatable(
 }
 
 async function refreshCustodyStates(feedIds: number[]): Promise<void> {
-  const publicClient = createPublicClient({
-    chain: getChain(),
-    transport: http(config.rpcUrl),
-  });
+  const publicClient = getPublicClient();
 
-  await Promise.allSettled(
-    feedIds.map(async (feedId) => {
-      const addr = config.custodyAddresses[feedId];
-      if (!addr) return;
+  // Build multicall contracts array: 3 reads per feed
+  const validFeeds: { feedId: number; addr: Hex }[] = [];
+  const contracts: { address: Hex; abi: typeof CustodyABI; functionName: string }[] = [];
 
-      try {
-        const [longBaseFee, shortBaseFee, funding] = await Promise.all([
-          publicClient.readContract({
-            address: addr as Hex,
-            abi: CustodyABI,
-            functionName: "cumulativeLongBaseFeePerUnit",
-          }),
-          publicClient.readContract({
-            address: addr as Hex,
-            abi: CustodyABI,
-            functionName: "cumulativeShortBaseFeePerUnit",
-          }),
-          publicClient.readContract({
-            address: addr as Hex,
-            abi: CustodyABI,
-            functionName: "cumulativeFundingPerUnit",
-          }),
-        ]);
+  for (const feedId of feedIds) {
+    const addr = config.custodyAddresses[feedId];
+    if (!addr) continue;
+    validFeeds.push({ feedId, addr: addr as Hex });
+    contracts.push(
+      { address: addr as Hex, abi: CustodyABI, functionName: "cumulativeLongBaseFeePerUnit" },
+      { address: addr as Hex, abi: CustodyABI, functionName: "cumulativeShortBaseFeePerUnit" },
+      { address: addr as Hex, abi: CustodyABI, functionName: "cumulativeFundingPerUnit" },
+    );
+  }
 
-        custodyStateCache.set(feedId, {
-          cumulativeLongBaseFeePerUnit: longBaseFee as bigint,
-          cumulativeShortBaseFeePerUnit: shortBaseFee as bigint,
-          cumulativeFundingPerUnit: funding as bigint,
+  if (contracts.length === 0) return;
+
+  try {
+    const results = await publicClient.multicall({ contracts });
+
+    // Parse results in groups of 3 (one group per feed)
+    for (let i = 0; i < validFeeds.length; i++) {
+      const base = i * 3;
+      const longRes = results[base];
+      const shortRes = results[base + 1];
+      const fundingRes = results[base + 2];
+
+      if (longRes.status === "success" && shortRes.status === "success" && fundingRes.status === "success") {
+        custodyStateCache.set(validFeeds[i].feedId, {
+          cumulativeLongBaseFeePerUnit: longRes.result as bigint,
+          cumulativeShortBaseFeePerUnit: shortRes.result as bigint,
+          cumulativeFundingPerUnit: fundingRes.result as bigint,
         });
-      } catch (err) {
-        logger.warn("Liquidation", `Failed to read custody state for feed ${feedId}: ${(err as Error).message.slice(0, 200)}`);
+      } else {
+        logger.warn("Liquidation", `Multicall partial failure for feed ${validFeeds[i].feedId}`);
       }
-    })
-  );
+    }
+  } catch (err) {
+    logger.warn("Liquidation", `Multicall custody read failed: ${(err as Error).message.slice(0, 200)}`);
+  }
 }

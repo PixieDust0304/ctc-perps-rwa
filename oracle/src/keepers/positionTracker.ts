@@ -335,6 +335,9 @@ function addTradingPosition(
     cumulativeFundingSnapshot: 0n,
   });
 
+  // Eagerly enrich so liquidation engine never hits a cold cache
+  enrichPosition(args.positionId).catch(() => {});
+
   persistPosition({
     positionId: args.positionId,
     type: "trading",
@@ -639,6 +642,7 @@ function startLogPolling(): void {
           };
           if (openPositions.has(args.positionId)) continue;
           addTradingPosition(args, log.transactionHash);
+          // addTradingPosition already triggers eager enrichment
           const pos = openPositions.get(args.positionId)!;
           broadcastPositionUpdate("opened", "trading", serializePosition(pos));
           logger.info("PositionTracker", `[poll] Position opened: ${args.positionId} feed=${args.feedId}`);
