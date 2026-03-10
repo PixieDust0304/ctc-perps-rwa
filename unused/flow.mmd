@@ -6,20 +6,22 @@ graph TB
     end
 
     subgraph ORACLE_SERVICE["ORACLE SERVICE · TypeScript · Node.js"]
-        FETCHER["Fetcher<br/>0.5s polling"]
+        FETCHER["Fetcher<br/>5s sequential loop"]
         PRICESTORE["PriceStore<br/>OHLCV candles"]
-        CHAINPUSHER["ChainPusher<br/>abi.encode + ECDSA<br/>+ post-push hooks"]
-        MARKETDETECTOR["MarketStateDetector<br/>fresh flag · debounce<br/>+ cooldown"]
+        CHAINPUSHER["ChainPusher<br/>cache-based · heartbeat 180s<br/>abi.encode + ECDSA"]
+        MARKETDETECTOR["MarketStateDetector<br/>three-state · schedule<br/>debounce + cooldown"]
+        SCHEDULE["ScheduleProvider<br/>per-feed market hours"]
+        TXSENDER["TxSender<br/>nonce management<br/>retry + confirm"]
         WSSERVER["WebSocket Server<br/>ws://localhost:8080<br/>prices · state · positions"]
         RESTAPI["REST API<br/>localhost:3001<br/>candles · positions · health"]
 
         subgraph KEEPERS["Keepers (tick-based, not polling)"]
             COORDINATOR["KeeperCoordinator<br/>settlement lock"]
-            FAK["FeeAccrualKeeper<br/>every 15s (throttled)"]
+            FAK["FeeAccrualKeeper<br/>independent blockTimeMs timer"]
             LE["LiquidationEngine<br/>off-chain pre-check<br/>+ parallel liquidate()"]
             PT["PositionTracker<br/>DB-backed + live watch<br/>Trading + P2P events"]
             PSK["P2PSettlementKeeper<br/>batch settle (50/tx)<br/>+ sweep leftover"]
-            PR["PositionReconciler<br/>30-min DB↔chain sweep"]
+            PR["PositionReconciler<br/>periodic DB↔chain sweep<br/>(blockTimeMs×4)"]
         end
     end
 
@@ -63,7 +65,7 @@ graph TB
     end
 
     %% Price Flow: Autonom → Fetcher → pipeline
-    AUTONOM -->|"HTTP batch poll<br/>every 0.5s"| FETCHER
+    AUTONOM -->|"HTTP batch poll<br/>every 5s"| FETCHER
     FETCHER --> PRICESTORE
     FETCHER --> MARKETDETECTOR
     FETCHER --> CHAINPUSHER
@@ -72,14 +74,20 @@ graph TB
     PRICESTORE -->|"async persist"| DB_TICKS
     PRICESTORE -->|"async upsert"| DB_CANDLES
 
-    %% Chain pusher → Oracle + post-push hooks
-    CHAINPUSHER -->|"signed tx<br/>abi.encode"| ORACLE_SOL
-    CHAINPUSHER -->|"post-push<br/>if ≥15s"| FAK
-    CHAINPUSHER -->|"post-push<br/>every tick"| LE
+    %% Schedule provider feeds market detector
+    SCHEDULE -->|"market hours<br/>per feed"| MARKETDETECTOR
 
-    %% Market state detection → keepers + DB
-    MARKETDETECTOR -->|"CLOSED→OPEN"| PSK
-    MARKETDETECTOR -->|"OPEN→CLOSED<br/>initializeVAMM"| VAMM
+    %% Chain pusher → Oracle via TxSender (cache-based decision)
+    CHAINPUSHER -->|"cache-based<br/>push decision"| TXSENDER
+    TXSENDER -->|"signed tx<br/>abi.encode"| ORACLE_SOL
+    CHAINPUSHER -->|"post-push"| LE
+
+    %% Independent fee accrual timer (not post-push)
+    FAK -.->|"independent<br/>blockTimeMs timer"| TXSENDER
+
+    %% Market state detection → keepers + DB (three-state)
+    MARKETDETECTOR -->|"CLOSED→OPEN<br/>deactivateVAMM"| PSK
+    MARKETDETECTOR -->|"OPEN→PAUSED→CLOSED<br/>initializeVAMM"| VAMM
     MARKETDETECTOR -->|"log transition"| DB_MARKET
 
     %% Fee accrual → custodies
@@ -155,7 +163,7 @@ graph TB
     classDef database fill:#01579b,stroke:#29b6f6,stroke-width:2px,color:#fff
 
     class AUTONOM,USER external
-    class FETCHER,PRICESTORE,CHAINPUSHER,MARKETDETECTOR,WSSERVER,RESTAPI oracle
+    class FETCHER,PRICESTORE,CHAINPUSHER,MARKETDETECTOR,SCHEDULE,TXSENDER,WSSERVER,RESTAPI oracle
     class COORDINATOR,FAK,LE,PT,PSK,PR keeper
     class TRADEPAGE,POOLPAGE,GOVPAGE,CHART frontend
     class ORACLE_SOL,MARKETSTATE,TRADING,P2PTRADING,VAMM,FEEMANAGER,POOL,GOVERNANCE contract

@@ -31,8 +31,10 @@
   }
   ```
 - **Price calculation**: `price * 10^expo` (expo = -10), convert to 18 decimals onchain: `price * 10^8`
-- **Market hours**: `fresh=true` = market open, `fresh=false` = market closed
-- **Fetch interval**: 0.5 seconds
+- **Market hours**: Three-state detection: OPEN (fresh=true confirmed), PAUSED (transitioning), CLOSED (fresh=false confirmed). Schedule-based with debounce confirmations and cooldown. Frozen timestamp detection for stale feeds.
+- **Chain pushing**: Cache-based decision — push on price change, heartbeat every 180s, or skip if unchanged
+- **Boot sequence**: `initOnChainState()` reads on-chain prices, market state, and custody state before starting pipeline
+- **Fetch interval**: 5 seconds (sequential `while(true)` loop)
 - **Staleness cap**: 210 seconds — accommodates Autonom's ~120s commodity feed cadence
 - **Signer**: Single trusted ECDSA signer, admin (DAO) can change
 - **Signature method**: `keccak256(abi.encode(feedIds, rawPrices, timestamps, freshFlags))` — uses `abi.encode` (not `encodePacked`) to prevent hash collisions with dynamic arrays
@@ -263,7 +265,7 @@
 
 ### Issue 14: DB-Chain Desync
 - Events can be missed if oracle service crashes during position open/close
-- **RESOLUTION**: PositionReconciler runs every 30 min, verifies all DB "open" positions against on-chain state. Catches missed events.
+- **RESOLUTION**: PositionReconciler runs every `max(blockTimeMs×4, 10s)`, verifies all DB "open" positions against on-chain state. Catches missed events.
 
 ## Git Config
 - **User**: Supreeta Dubey

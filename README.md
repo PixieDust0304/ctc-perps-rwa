@@ -188,9 +188,10 @@ npx tsx src/index.ts
 ```
 
 **What the oracle does**:
-- **Fetcher**: Polls Autonom every 500ms for price data on all 4 feeds
-- **ChainPusher**: Signs prices with `abi.encode` + ECDSA, submits to on-chain Oracle contract
-- **PriceStore**: Stores price ticks and builds candle data (1m, 5m, 15m, 1h) in PostgreSQL
+- **Fetcher**: Polls Autonom every 5s in a sequential `while(true)` loop for price data on all 4 feeds
+- **ChainPusher**: Cache-based push decision (change detected / heartbeat 180s / skip), signs with `abi.encode` + ECDSA via TxSender
+- **MarketStateDetector**: Three-state machine (OPEN → PAUSED → CLOSED) with schedule-based detection, debounce confirmations, and cooldown
+- **PriceStore**: Stores price ticks and builds candle data (15s, 1m, 5m, 10m, 15m, 30m, 1h, 6h, 12h, 1d) in PostgreSQL
 - **WebSocket Server** (port 8080): Broadcasts real-time price ticks, market state changes, and position updates
 - **REST API** (port 3001):
   - `GET /api/candles/:feedId/:interval?limit=100` — candle data
@@ -200,18 +201,20 @@ npx tsx src/index.ts
   - `GET /api/positions/history?owner=0x...` — all positions (any status)
   - `GET /api/health` — health check
 - **Keepers** (automated on-chain actions):
-  - Fee accrual: calls `Custody.accrueFees()` every 15s
+  - Fee accrual: calls `Custody.accrueFees()` every `blockTimeMs` (default 15s) via independent timer
   - Liquidation engine: off-chain pre-check + parallel `Trading.liquidate()` txs
   - P2P settlement: batch settles P2P trades when markets open
   - Position tracker: DB-backed startup + live event watching (Trading + P2P)
-  - Position reconciler: 30-min sweep verifies DB matches on-chain state
+  - Position reconciler: periodic sweep (every `max(blockTimeMs×4, 10s)`) verifies DB matches on-chain state
 
 **Database**: PostgreSQL stores price ticks, candles, market state transitions, position records (full lifecycle), and keeper events. If `DATABASE_URL` is not set, falls back to in-memory storage.
 
 **Config** (`oracle/src/config/index.ts`):
 - `stalenessThresholdMs`: 210,000ms — oracle skips pushing if price hasn't changed within this window
-- `fetchIntervalMs`: 500ms — polling interval for Autonom
-- `feeInterval`: 15 — ticks between fee accrual calls
+- `fetchIntervalMs`: 5000ms (5s) — sequential loop interval for Autonom
+- `heartbeatIntervalMs`: 180,000ms (3 min) — max time between chain pushes even if no price change
+- `blockTimeMs`: 1000ms (Anvil) / 15,000ms (CreditCoin) — fee accrual timer interval
+- `feeAccrual`: independent `blockTimeMs` timer — decoupled from price pipeline
 
 To install dependencies (first time):
 ```bash
@@ -314,10 +317,11 @@ The `start.sh` script handles starting PostgreSQL, creating the database, and pu
 | Maintenance margin     | 10%    | DeployLocal.s.sol line 118        | 1000 bps; ~0.9% adverse move at 100x       |
 | Max leverage           | 100x   | DeployLocal.s.sol line 118        | On-chain; must redeploy to change           |
 | Oracle staleness (off-chain) | 210,000ms | oracle/src/config/index.ts | Oracle service skip threshold          |
-| Fetch interval         | 500ms  | oracle/src/config/index.ts        | Autonom polling rate                        |
-| Fee accrual interval   | 15     | oracle/src/config/index.ts        | Ticks between fee accrual calls             |
+| Fetch interval         | 5000ms (5s) | oracle/src/config/index.ts   | Sequential loop interval for Autonom        |
+| Heartbeat interval     | 180s   | oracle/src/config/index.ts        | Max time between chain pushes (even if no price change) |
+| Fee accrual interval   | blockTimeMs (15s) | oracle/src/config/index.ts | Independent timer for fee accrual           |
 | Max base fee rate      | 5 bps/hr | DeployLocal.s.sol `_deployCustody` | 0.05%/hr on notional; utilization-scaled  |
 | Max funding rate       | 5 bps/hr | DeployLocal.s.sol `_deployCustody` | 0.05%/hr on notional; OI-imbalance-scaled |
 | Open/close fee         | 10 bps | DeployLocal.s.sol line 79           | 0.1% of position size                      |
 | Anvil block time       | 2s     | start.sh                          | Local chain block production rate           |
-| Reconciler interval    | 30min  | oracle/src/index.ts               | DB↔chain position reconciliation            |
+| Reconciler interval    | max(blockTimeMs×4, 10s) | oracle/src/index.ts  | DB↔chain position reconciliation            |

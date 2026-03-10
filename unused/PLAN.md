@@ -54,10 +54,12 @@ ctc-perps/
         index.ts                  # env vars, chain config, feed IDs
         chains.ts                 # CreditCoin chain definitions
       services/
-        fetcher.ts                # Autonom API polling (0.5s)
+        fetcher.ts                # 5s sequential loop, Autonom API
         priceStore.ts             # OHLCV aggregation, in-memory + Prisma persistence
-        chainPusher.ts            # Signs (abi.encode + ECDSA) + submits prices onchain
-        marketStateDetector.ts    # fresh flag transitions with debounce + cooldown
+        chainPusher.ts            # Cache-based push decision (change/heartbeat/skip), signs via ECDSA
+        marketStateDetector.ts    # Three-state machine (OPEN/PAUSED/CLOSED), schedule + debounce + cooldown
+        scheduleProvider.ts       # Per-feed market hours schedule
+        txSender.ts               # Nonce management, retry + confirmation
         websocketServer.ts        # WS server: prices, market state, position updates
         database.ts               # Prisma client: ticks, candles, positions, market state, events
       keepers/
@@ -66,7 +68,7 @@ ctc-perps/
         p2pSettlementKeeper.ts    # Batch settle at market open (50/tx + sweep)
         keeperCoordinator.ts      # No overlap between keepers
         positionTracker.ts        # DB-backed startup + live event watching (Trading + P2P)
-        positionReconciler.ts     # 30-min chain-vs-DB reconciliation sweep
+        positionReconciler.ts     # Periodic chain-vs-DB reconciliation sweep (max(blockTimeMs×4, 10s))
       utils/
         signing.ts                # encodeAbiParameters + ECDSA wallet
         logger.ts

@@ -31,7 +31,7 @@ pErp-man is a 5-service system: an **external price oracle**, a **TypeScript ora
 │  Governance → all admin fns      │
 └──────────────────────────────────┘
                ▲
-               │ HTTP polling (0.5s)
+               │ HTTP polling (5s)
 ┌──────────────┴───────────┐
 │  AUTONOM ORACLE API      │
 │  178.128.21.71:3000      │
@@ -46,39 +46,42 @@ pErp-man is a 5-service system: an **external price oracle**, a **TypeScript ora
 ### 1. Price Flow (Autonom → Chain → Same-Tick Keepers → Frontend)
 
 ```
-Autonom API ──0.5s poll──► Fetcher ──► PriceStore ──► WebSocket Server ──► Frontend
+Autonom API ──5s loop──► Fetcher ──► PriceStore ──► WebSocket Server ──► Frontend
                               │                              (ws://localhost:8080)
                               │
-                              ├──► MarketStateDetector ──► detect CLOSED→OPEN
-                              │        │                        │
+                              ├──► MarketStateDetector ──► three-state: OPEN → PAUSED → CLOSED
+                              │        │
+                              │        ├──► CLOSED→OPEN ──► deactivateVAMM
                               │        │                        └──► P2PSettlementKeeper
                               │        │                              (batch settle + sweep)
                               │        │
-                              │        └──► detect OPEN→CLOSED ──► initializeVAMM
+                              │        └──► OPEN→PAUSED→CLOSED ──► initializeVAMM
                               │
                               ├──► DB: logMarketState() on transitions
                               │
-                              └──► ChainPusher ──ECDSA sign (abi.encode)──► Oracle.sol
+                              └──► ChainPusher ──cache-based decision──► TxSender ──► Oracle.sol
+                                        │       (change / heartbeat 180s / skip)
                                         │
-                                        │  ┌─── POST-PUSH HOOKS (same tick) ───┐
-                                        │  │                                    │
-                                        ├──► FeeAccrualKeeper (every 15s)       │
-                                        │      └──► Custody.accrueFees() × 4    │
-                                        │                                       │
-                                        └──► LiquidationEngine                  │
-                                               ├── refreshCustodyStates()       │
-                                               ├── off-chain pre-check          │
+                                        └──► LiquidationEngine (post-push)
+                                               ├── refreshCustodyStates()
+                                               ├── off-chain pre-check
                                                └── Trading.liquidate() (parallel)
-                                            └───────────────────────────────────┘
+
+              ┌─── INDEPENDENT TIMER (decoupled from pipeline) ───┐
+              │                                                     │
+              │  FeeAccrualKeeper (every blockTimeMs, default 15s)  │
+              │    └──► Custody.accrueFees() × 4                    │
+              └─────────────────────────────────────────────────────┘
 ```
 
-- **Fetcher** polls Autonom every 500ms for 4 feeds (Gold 2056, Silver 2069, CrudeOil 2003, Platinum 2062)
-- **ChainPusher** signs price batch with `abi.encode` + ECDSA, submits to Oracle.sol, then runs post-push hooks
-- **FeeAccrualKeeper** calls `Custody.accrueFees()` for each custody, throttled to every 15s
+- **Fetcher** polls Autonom every 5s in a sequential `while(true)` loop for 4 feeds (Gold 2056, Silver 2069, CrudeOil 2003, Platinum 2062)
+- **ChainPusher** uses cache-based push decision (change detected / heartbeat 180s / skip), signs with `abi.encode` + ECDSA via TxSender, submits to Oracle.sol
+- **FeeAccrualKeeper** calls `Custody.accrueFees()` for each custody via independent `blockTimeMs` timer (default 15s), decoupled from the price pipeline
 - **LiquidationEngine** runs off-chain pre-check (mirrors Solidity math), submits `liquidate()` txs in parallel
-- **Key design**: liquidation runs in the **same tick** as price push, not a separate polling loop (<500ms latency)
-- **MarketStateDetector** reads `fresh` flag with debounce: `true` = market open, `false` = market closed
-- **PriceStore** aggregates ticks into OHLCV candles (1m, 5m, 15m, 1h) — persisted to PostgreSQL
+- **Key design**: liquidation runs in the **same tick** as price push, not a separate polling loop
+- **MarketStateDetector** uses three-state machine (OPEN, PAUSED, CLOSED) with schedule-based detection, debounce confirmations, and cooldown
+- **Boot sequence**: `initOnChainState()` reads on-chain prices, market state, and custody state before starting pipeline
+- **PriceStore** aggregates ticks into OHLCV candles (15s, 1m, 5m, 10m, 15m, 30m, 1h, 6h, 12h, 1d) — persisted to PostgreSQL
 - **WebSocket Server** broadcasts raw ticks, market state changes, and position updates to frontends
 - **REST API** (localhost:3001) serves candles, positions (trading + P2P + history), prices, health
 
@@ -121,14 +124,18 @@ User ──► Frontend ──► P2PTrading.sol
 ### 4. Market Transition Flow
 
 ```
-Market Close (fresh=false, debounced):
+Market Close (three-state transition):
+  1. OPEN → PAUSED (fresh=false detected, begin confirmation count)
+  2. PAUSED → CLOSED (6 confirmations at 5s = 30s debounce)
   MarketStateDetector ──► MarketState.sol (state → CLOSED)
   MarketStateDetector ──► VAMM.sol (initializeVAMM at last spot price)
   MarketStateDetector ──► DB: logMarketState("closed")
   Main positions: stay open, keep accruing fees, no liquidation
   P2P positions: can now open/close via VAMM
 
-Market Open (fresh=true, debounced):
+Market Open (three-state transition):
+  CLOSED → OPEN (2 confirmations at 5s = 10s debounce)
+  MarketStateDetector ──► VAMM.sol (deactivateVAMM)
   MarketStateDetector ──► P2PSettlementKeeper
   KeeperCoordinator: acquires settlement lock (blocks liquidation for this feed)
   P2PSettlementKeeper ──► MarketState.sol (state → OPEN)
@@ -142,7 +149,7 @@ Market Open (fresh=true, debounced):
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│  TICK PIPELINE (every 500ms)                                     │
+│  PIPELINE (every 5s, sequential while(true) loop)               │
 │                                                                  │
 │  Fetcher → Store → WS Broadcast → MarketStateDetector            │
 │                                          │                       │
@@ -159,18 +166,17 @@ Market Open (fresh=true, debounced):
 │                                   │  └─ endSettlement()     │   │
 │                                   └─────────────────────────┘   │
 │                                                                  │
-│  ChainPusher → Oracle.updatePrices()                             │
+│  ChainPusher (cache-based: change/heartbeat 180s/skip)           │
 │       │                                                          │
-│       ├──► FeeAccrualKeeper.maybeTriggerAccrual()               │
-│       │       └─ Custody.accrueFees() × 4 (if ≥15s elapsed)    │
-│       │                                                          │
-│       └──► LiquidationEngine.checkAndLiquidateAll()             │
-│               ├─ refreshCustodyStates() (3 reads × 4 feeds)    │
-│               ├─ for each feed (skip if settlement in progress) │
-│               │    ├─ getOpenPositions(feedId)                  │
-│               │    ├─ enrichPosition() (lazy RPC if needed)     │
-│               │    └─ isLiquidatable() (off-chain math)         │
-│               └─ Trading.liquidate() × N (parallel)             │
+│       └──► TxSender → Oracle.updatePrices()                      │
+│               │                                                  │
+│               └──► LiquidationEngine.checkAndLiquidateAll()      │
+│                       ├─ refreshCustodyStates() (3 reads × 4)   │
+│                       ├─ for each feed (skip if settlement)      │
+│                       │    ├─ getOpenPositions(feedId)           │
+│                       │    ├─ enrichPosition() (lazy RPC)        │
+│                       │    └─ isLiquidatable() (off-chain math)  │
+│                       └─ Trading.liquidate() × N (parallel)      │
 │                                                                  │
 │  PositionTracker (DB-backed + event-driven)                      │
 │       ├─ Startup: load from PostgreSQL (instant, no replay)     │
@@ -183,19 +189,24 @@ Market Open (fresh=true, debounced):
 │       ├─ watchContractEvent(P2PPositionClosed) → Map + DB       │
 │       └─ WebSocket: broadcastPositionUpdate() on each event     │
 │                                                                  │
-│  PositionReconciler (every 30 min)                               │
+│  PositionReconciler (every max(blockTimeMs×4, 10s))              │
 │       ├─ Read all DB positions with status="open"               │
 │       ├─ Verify against on-chain state                          │
 │       └─ Fix any missed events (update DB status)               │
+│                                                                  │
+│  ┌── INDEPENDENT TIMER (decoupled from pipeline) ──┐            │
+│  │  FeeAccrualKeeper (every blockTimeMs)            │            │
+│  │    └─ Custody.accrueFees() × 4 custodies         │            │
+│  └──────────────────────────────────────────────────┘            │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
 - **No separate keeper polling loop** — liquidation runs in the same tick as price push
 - **PositionTracker** loads from PostgreSQL on boot (instant), then watches live events
 - **KeeperCoordinator** prevents overlap: P2PSettlementKeeper acquires lock, LiquidationEngine skips locked feeds
-- **FeeAccrualKeeper** throttled to 15s intervals, skips if called too early
-- **PositionReconciler** runs every 30 min to catch any missed events
-- All keepers use the same Anvil RPC signer (oracle service private key)
+- **FeeAccrualKeeper** runs on independent `blockTimeMs` timer (default 15s), decoupled from the price pipeline
+- **PositionReconciler** runs every `max(blockTimeMs×4, 10s)` to catch any missed events
+- All keepers use TxSender for nonce management and transaction confirmation
 
 ### 6. LP (Liquidity Provider) Flow
 
@@ -229,7 +240,7 @@ Custody.accrueFees()├─── Funding Rate (zero-sum) ───► Pool as in
                          Calculated on preliminary size, deducted from collateral
 ```
 
-- **FeeAccrualKeeper** triggers `Custody.accrueFees()` on-chain every 15s via post-push hook
+- **FeeAccrualKeeper** triggers `Custody.accrueFees()` on-chain every `blockTimeMs` (default 15s) via independent timer
 - **Base fee rate** (5 bps/hr = 0.05%/hr): uses LP-only liquidity (`availableBalance - totalTraderCollateral`) as denominator to prevent trader collateral from suppressing fee rates. Configured as hourly bps, divided by 240 intervals/hr internally.
 - **Funding rate** (5 bps/hr = 0.05%/hr): configured as hourly bps (`maxFundingRatePerHourBps`), divided by 240 intervals/hr internally. At 100x leverage, 5 bps/hr on notional = 5%/hr of collateral.
 - **totalTraderCollateral**: tracked separately in Custody — incremented on position open or addCollateral, decremented on close/liquidation
@@ -322,7 +333,7 @@ PositionTracker
     ├─→ WebSocket broadcast (real-time to frontend)
     └─→ REST API (on-demand queries with filters)
 
-PositionReconciler (every 30 min)
+PositionReconciler (every max(blockTimeMs×4, 10s))
     ├─→ Read DB open positions
     ├─→ Verify against chain state
     └─→ Fix any missed events
@@ -344,17 +355,19 @@ oracle/src/
 ├── abi/
 │   └── index.ts                      ← Contract ABIs: Trading, P2PTrading, Custody, Oracle, MarketState, VAMM
 ├── services/
-│   ├── fetcher.ts                    ← Polls Autonom API every 500ms
-│   ├── chainPusher.ts                ← Signs (abi.encode) & pushes prices, runs post-push hooks
-│   ├── marketStateDetector.ts        ← Detects fresh flag transitions with debounce + cooldown
-│   ├── priceStore.ts                 ← In-memory + DB candle storage (1m, 5m, 15m, 1h)
+│   ├── fetcher.ts                    ← 5s sequential loop, Autonom API
+│   ├── chainPusher.ts                ← Cache-based push decision (change/heartbeat/skip), signs via ECDSA
+│   ├── marketStateDetector.ts        ← Three-state machine (OPEN/PAUSED/CLOSED), schedule + debounce + cooldown
+│   ├── priceStore.ts                 ← In-memory + DB candle storage (15s, 1m, 5m, 10m, 15m, 30m, 1h, 6h, 12h, 1d)
+│   ├── scheduleProvider.ts           ← Per-feed market hours schedule
+│   ├── txSender.ts                   ← Nonce management, retry + confirmation
 │   ├── websocketServer.ts            ← WS broadcast: prices, market state, position updates
 │   └── database.ts                   ← Prisma client: price ticks, candles, positions, market state, keeper events
 ├── keepers/
 │   ├── positionTracker.ts            ← DB-backed startup + live event watching (Trading + P2P)
-│   ├── positionReconciler.ts         ← 30-min chain reconciliation sweep
+│   ├── positionReconciler.ts         ← Periodic chain reconciliation sweep (max(blockTimeMs×4, 10s))
 │   ├── liquidationEngine.ts          ← Off-chain pre-check + parallel Trading.liquidate() txs
-│   ├── feeAccrualKeeper.ts           ← Custody.accrueFees() every 15s (throttled)
+│   ├── feeAccrualKeeper.ts           ← Custody.accrueFees() every blockTimeMs (independent timer)
 │   ├── p2pSettlementKeeper.ts        ← Batch P2P settlement on market open (50/tx + sweep)
 │   └── keeperCoordinator.ts          ← Settlement lock (prevents liquidation during settlement)
 ├── types/
@@ -385,7 +398,9 @@ oracle/src/
 3. Deploy contracts            ← DeployLocal.s.sol
 4. Oracle Service              ← reads env vars for addresses, connects to Autonom + Anvil + PostgreSQL
    a. Boot: DB init → WS → REST → PositionTracker (load from DB) → event watchers → reconciler
-   b. Run:  Fetch loop (500ms) → pipeline → keepers
+   b. Init: initOnChainState() → reads on-chain prices, market state, custody state
+   c. Timer: Independent FeeAccrualKeeper timer (every blockTimeMs)
+   d. Run:  Sequential while(true) loop (5s) → fetch → store → detect → push → keepers
 5. Frontend                    ← connects to Oracle WS + Anvil RPC
 ```
 
@@ -398,13 +413,15 @@ All orchestrated by `./start.sh`.
 | 1 | fetchPrices() | ~50ms | HTTP to Autonom, 5s timeout |
 | 2 | storePriceTicks() | <1ms | In-memory + async DB write |
 | 3 | broadcastPrices() | <1ms | WS push, sync |
-| 4 | detectMarketStateChanges() | <1ms | In-memory compare with debounce |
-| 5 | signPriceBatch() | ~3ms | keccak256(abi.encode) + ECDSA |
-| 6 | simulateContract() | ~30ms | eth_call |
-| 7 | writeContract(updatePrices) | ~100ms | tx mine (Anvil instant) |
-| 8 | maybeTriggerAccrual() | 0–200ms | 0 if <15s; ~200ms if firing (4 parallel txs) |
+| 4 | detectMarketStateChanges() | <1ms | Three-state machine with schedule check |
+| 5 | Cache-based push decision | <1ms | Compare vs cached prices + heartbeat check |
+| 6 | signPriceBatch() | ~3ms | keccak256(abi.encode) + ECDSA (if pushing) |
+| 7 | simulateContract() | ~30ms | eth_call (if pushing) |
+| 8 | writeContract(updatePrices) | ~100ms | tx mine (Anvil instant, if pushing) |
 | 9 | refreshCustodyStates() | ~20ms | 12 parallel reads |
 | 10 | isLiquidatable() × N | <1ms×N | Pure math, no RPC |
 | 11 | Trading.liquidate() × M | ~100ms | Parallel via allSettled |
-| **Total (normal tick)** | | **~300ms** | Well within 500ms budget |
+| **Total (normal tick)** | | **~300ms** | Well within 5s budget |
+| **Total (skip tick)** | | **~55ms** | When cache says no push needed |
 | **Total (settlement tick)** | | **2–30s** | Rare: 2×/day/feed, blocks tick |
+| **Fee accrual (independent)** | | **~200ms** | Every blockTimeMs, 4 parallel txs |

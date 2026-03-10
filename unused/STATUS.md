@@ -53,17 +53,17 @@
 - [x] Initialize TypeScript project
 - [x] PostgreSQL schema (Prisma v5)
 - [x] Database service layer (auto-fallback to in-memory if no DB)
-- [x] Fetcher (Autonom 0.5s polling)
+- [x] Fetcher (5s sequential loop, Autonom API)
 - [x] PriceStore (OHLCV aggregation, in-memory + Prisma persistence)
 - [x] ChainPusher (abi.encode + ECDSA sign + submit)
-- [x] MarketStateDetector (fresh flag with debounce + cooldown)
+- [x] MarketStateDetector (three-state machine: OPEN/PAUSED/CLOSED, schedule + debounce + cooldown)
 - [x] WebSocket server (prices, market state, position updates)
 - [x] LiquidationEngine (off-chain pre-check + parallel liquidate)
 - [x] FeeAccrualKeeper (Custody.accrueFees every 15s)
 - [x] P2PSettlementKeeper (batch settlement + sweep)
 - [x] KeeperCoordinator (no overlap between settlement and liquidation)
 - [x] PositionTracker (DB-backed startup + live Trading/P2P event watching)
-- [x] PositionReconciler (30-min chain-vs-DB sweep)
+- [x] PositionReconciler (periodic chain-vs-DB sweep, max(blockTimeMs×4, 10s))
 - [x] REST API: candles, prices, positions (trading + P2P + history), health
 - [x] Market state logging to DB
 
@@ -178,6 +178,24 @@
 | 2026-03-06 | totalTraderCollateral separation | Prevents trader deposits from suppressing borrow fee rates |
 | 2026-03-06 | PostgreSQL managed by start.sh | No auto-start on boot; only runs when protocol runs |
 | 2026-03-06 | DB position lifecycle tracking | Full open→close/liquidate/settle with PnL, tx hashes, reconciliation |
+| 2026-03-11 | 5s sequential loop | Replaced 500ms setInterval with while(true) + sleep for predictable timing |
+| 2026-03-11 | Cache-based chain pushing | Only push on price change or heartbeat (180s), skip otherwise |
+| 2026-03-11 | Three-state market machine | OPEN/PAUSED/CLOSED with schedule-based detection and debounce |
+| 2026-03-11 | Independent fee accrual timer | Decoupled from price pipeline for reliable blockTimeMs-interval accrual |
+| 2026-03-11 | initOnChainState() boot | Read on-chain state before starting pipeline to avoid stale-start issues |
+
+### Phase 11: Pipeline Redesign ✅
+- [x] Polling 500ms → 5s sequential `while(true)` loop
+- [x] Cache-based chain pushing (push on change, heartbeat 180s, skip if unchanged)
+- [x] Three-state market machine (OPEN → PAUSED → CLOSED) with schedule-based detection
+- [x] FeeAccrualKeeper decoupled to independent `blockTimeMs` timer
+- [x] `initOnChainState()` boot sequence (reads on-chain state before pipeline start)
+- [x] ScheduleProvider for per-feed market hours
+- [x] TxSender for nonce management and transaction confirmation
+- [x] PositionReconciler interval: 30min → max(blockTimeMs×4, 10s)
+- [x] Candle intervals expanded: 1m,5m,15m,1h → 15s,1m,5m,10m,15m,30m,1h,6h,12h,1d
+- [x] Frozen timestamp detection for stale feeds
+- [x] VAMM deactivation on CLOSED→OPEN transition
 
 ## Blockers
 
