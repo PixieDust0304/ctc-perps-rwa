@@ -233,6 +233,8 @@ export function PriceChart({
       const lastCandleSec = cTimes[cTimes.length - 1] ?? 0;
       let visibleStates = rawMarketStatesRef.current.filter(
         (s) => {
+          // Only draw markers for open/closed transitions, not paused
+          if (s.state === "paused") return false;
           const sSec = s.timestamp / 1000;
           return sSec >= firstCandleSec && sSec <= lastCandleSec;
         }
