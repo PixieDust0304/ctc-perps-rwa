@@ -1,6 +1,7 @@
 import { config } from "./config/index.js";
 import { startFetcher } from "./services/fetcher.js";
-import { pushPrices } from "./services/chainPusher.js";
+import { pushPrices, initOnChainState } from "./services/chainPusher.js";
+import { maybeTriggerAccrual } from "./keepers/feeAccrualKeeper.js";
 import { storePriceTicks, getCandlesAsync, getLatestPrice, getPriceMovement } from "./services/priceStore.js";
 import { detectMarketStateChanges, getMarketState } from "./services/marketStateDetector.js";
 import { initDatabase, queryPositions, queryPositionsByType, queryMarketStates, getPrisma, logMarketState } from "./services/database.js";
@@ -218,7 +219,23 @@ async function main() {
     logger.info("Main", `Position reconciler scheduled (every ${reconcileIntervalMs / 1000}s, block time ${config.blockTimeMs / 1000}s)`);
   }
 
-  // Start price fetcher with processing pipeline
+  // Read current on-chain prices into cache before starting the fetcher.
+  // On first deploy, feeds will revert — allSettled handles gracefully.
+  await initOnChainState();
+
+  // Fee accrual runs on its own block-time timer — independent of price pushes.
+  // Cumulative accumulators are continuous; frequent calls keep rates accurate
+  // as OI changes from position opens/closes.
+  setInterval(() => {
+    maybeTriggerAccrual().catch((err) =>
+      logger.warn("Main", `Fee accrual error: ${(err as Error).message}`)
+    );
+  }, config.blockTimeMs);
+
+  logger.info("Main", "Oracle service running. Press Ctrl+C to stop.");
+
+  // Start price fetcher with processing pipeline.
+  // startFetcher returns Promise<never> (runs forever) — fire-and-forget.
   startFetcher(async (ticks: PriceTick[]) => {
     // 1. Store in memory/DB
     storePriceTicks(ticks);
@@ -300,9 +317,9 @@ async function main() {
         logger.info("Pipeline", "Settlement handler returned");
       }
     }
-  });
-
-  logger.info("Main", "Oracle service running. Press Ctrl+C to stop.");
+  }).catch((err) =>
+    logger.error("Main", `Fetcher crashed: ${(err as Error).message}`)
+  );
 }
 
 main().catch((err) => {

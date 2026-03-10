@@ -148,19 +148,30 @@ export function _resetFetcherState(): void {
 }
 
 /**
- * Start continuous price fetching at configured interval
+ * Start continuous price fetching at configured interval.
+ * Sequential while(true) loop — guarantees no concurrent onPrices callbacks.
+ * Sleep accounts for processing time so cycles are spaced from start, not completion.
  */
-export function startFetcher(onPrices: (ticks: PriceTick[]) => Promise<void> | void): NodeJS.Timeout {
-  logger.info("Fetcher", `Starting price fetcher (${config.fetchIntervalMs}ms interval)`);
+export async function startFetcher(
+  onPrices: (ticks: PriceTick[]) => Promise<void>
+): Promise<never> {
+  logger.info(
+    "Fetcher",
+    `Starting price fetcher (${config.fetchIntervalMs}ms interval, sequential)`
+  );
 
-  const interval = setInterval(async () => {
+  while (true) {
+    const cycleStart = Date.now();
     try {
       const ticks = await fetchPrices();
       await onPrices(ticks);
     } catch (err) {
       logger.error("Fetcher", `Fetch failed: ${(err as Error).message}`);
     }
-  }, config.fetchIntervalMs);
-
-  return interval;
+    const sleepMs = Math.max(
+      0,
+      config.fetchIntervalMs - (Date.now() - cycleStart)
+    );
+    if (sleepMs > 0) await new Promise((r) => setTimeout(r, sleepMs));
+  }
 }

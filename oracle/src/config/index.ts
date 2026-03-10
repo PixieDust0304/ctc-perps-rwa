@@ -61,7 +61,8 @@ export const config = {
   vammMinDepth: "100000000000000000000000" as const, // $100K floor in wei (100_000e18)
 
   // Timings
-  fetchIntervalMs: 500,
+  fetchIntervalMs: 5000, // 5s — Autonom updates every ~30-60s, no need to poll faster
+  heartbeatIntervalMs: 180_000, // Push even if prices unchanged — prevents on-chain staleness past 210s threshold
   stalenessThresholdMs: 210_000,
   frozenTimestampThresholdMs: Number(process.env.FROZEN_TIMESTAMP_THRESHOLD_MS || "60000"),
   feeInterval: 15,
@@ -71,19 +72,19 @@ export const config = {
   blockTimeMs: Number(process.env.BLOCK_TIME_MS || "1000"),
 
   // Market state detection — debounce + cooldown to prevent false transitions from Autonom lags.
-  // Close requires high confidence (60 readings × 500ms = 30s of sustained staleness ON TOP of the 210s threshold).
-  // Open recovers faster (6 readings × 500ms = 3s) since fresh data is a strong signal.
-  // Cooldown prevents flip-flops entirely — no reverse transition within 5 minutes.
-  marketCloseConfirmations: Number(process.env.MARKET_CLOSE_CONFIRMATIONS || "60"),
-  marketOpenConfirmations: Number(process.env.MARKET_OPEN_CONFIRMATIONS || "6"),
+  // Close requires high confidence (6 readings × 5s = 30s of sustained staleness ON TOP of the 210s threshold).
+  // Open recovers faster (2 readings × 5s = 10s) since fresh data is a strong signal.
+  // Cooldown prevents flip-flops entirely — no reverse transition within 3 minutes.
+  marketCloseConfirmations: Number(process.env.MARKET_CLOSE_CONFIRMATIONS || "6"),
+  marketOpenConfirmations: Number(process.env.MARKET_OPEN_CONFIRMATIONS || "2"),
   marketStateCooldownMs: Number(process.env.MARKET_STATE_COOLDOWN_MS || "180000"),
 
   // Schedule — CME Globex hours for all 4 commodities
   scheduleEnabled: process.env.SCHEDULE_ENABLED !== "false", // default: enabled
   scheduleTimezone: "America/Chicago",
 
-  // MARKET_CLOSED override debounce — 3 consecutive readings (~1.5s)
-  marketClosedOverrideConfirmations: Number(process.env.MARKET_CLOSED_OVERRIDE_CONFIRMATIONS || "3"),
+  // MARKET_CLOSED override debounce — 1 reading (5s at 5s interval)
+  marketClosedOverrideConfirmations: Number(process.env.MARKET_CLOSED_OVERRIDE_CONFIRMATIONS || "1"),
 
   // Server
   wsPort: Number(process.env.WS_PORT || "8080"),

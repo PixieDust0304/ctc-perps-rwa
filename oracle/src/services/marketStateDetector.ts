@@ -52,9 +52,9 @@ function determineDesiredState(tick: PriceTick): { state: MarketState; reason: s
  * Get required confirmations for a transition.
  *
  * Schedule-driven transitions (to/from CLOSED via schedule boundary) have NO debounce.
- * MARKET_CLOSED override: 3 readings (~1.5s) — authoritative with minimal noise filter.
- * OPEN → PAUSED: 60 readings (30s) — conservative, prevents false pauses.
- * PAUSED → OPEN: 6 readings (3s) — quick recovery, fresh data is strong signal.
+ * MARKET_CLOSED override: 1 reading (5s at 5s interval) — authoritative with minimal noise filter.
+ * OPEN → PAUSED: 6 readings (30s at 5s interval) — conservative, prevents false pauses.
+ * PAUSED → OPEN: 2 readings (10s at 5s interval) — quick recovery, fresh data is strong signal.
  */
 function getRequiredConfirmations(
   from: MarketState,
