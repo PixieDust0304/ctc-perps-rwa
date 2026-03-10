@@ -639,6 +639,7 @@ export function PositionsPanel({
     const diffMs = now - openedMs;
     if (diffMs < 0) return null;
     const totalMins = Math.floor(diffMs / 60000);
+    if (totalMins < 1) return "now";
     const days = Math.floor(totalMins / 1440);
     const hrs = Math.floor((totalMins % 1440) / 60);
     const mins = totalMins % 60;
@@ -646,7 +647,7 @@ export function PositionsPanel({
     if (days > 0) age += `${days}d `;
     if (hrs > 0 || days > 0) age += `${hrs}h `;
     age += `${mins}m`;
-    return age.trim();
+    return `${age.trim()} ago`;
   };
 
   const formatAbsoluteTime = (openedAt: string | undefined) => {
@@ -837,7 +838,7 @@ export function PositionsPanel({
                     )}
                     {pos.openedAt && (
                       <span className="text-gray-500" title={formatAbsoluteTime(pos.openedAt) ?? ""}>
-                        {formatAge(pos.openedAt)} ago · {formatAbsoluteTime(pos.openedAt)}
+                        {formatAge(pos.openedAt)} · {formatAbsoluteTime(pos.openedAt)}
                       </span>
                     )}
                   </div>
