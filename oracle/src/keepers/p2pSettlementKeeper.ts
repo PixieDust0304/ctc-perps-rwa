@@ -17,6 +17,13 @@ const BATCH_SIZE = 50;
  */
 export async function handleMarketOpenSettlement(updates: MarketStateUpdate[]): Promise<void> {
   for (const update of updates) {
+    // Safety: only process OPEN↔CLOSED transitions, never PAUSED
+    if (update.state === "PAUSED") {
+      const feedName = config.feedNames?.[update.feedId] || `Feed ${update.feedId}`;
+      logger.info("P2PSettlement", `Skipping PAUSED state for ${feedName} — no on-chain action needed`);
+      continue;
+    }
+
     const feedName = config.feedNames?.[update.feedId] || `Feed ${update.feedId}`;
     const direction = update.isOpen ? "CLOSED→OPEN" : "OPEN→CLOSED";
     logger.info("P2PSettlement", `*** ${feedName} transition: ${direction} — starting settlement ***`);

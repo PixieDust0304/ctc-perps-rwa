@@ -9,6 +9,14 @@ interface PriceUpdate {
   fresh: boolean;
 }
 
+export interface MarketStateWsUpdate {
+  feedId: number;
+  state: "OPEN" | "PAUSED" | "CLOSED";
+  isOpen: boolean;
+  timestamp: number;
+  reason?: string;
+}
+
 export interface PositionUpdate {
   action: "opened" | "closed" | "liquidated" | "settled" | "collateralAdded";
   positionType: "trading" | "p2p";
@@ -28,6 +36,7 @@ export function useWebSocket(
 ) {
   const [prices, setPrices] = useState<Record<number, PriceUpdate>>({});
   const [vammPrices, setVammPrices] = useState<Record<number, VammPriceUpdate>>({});
+  const [marketStates, setMarketStates] = useState<Record<number, MarketStateWsUpdate>>({});
   const [connected, setConnected] = useState(false);
   const positionCallbacksRef = useRef<Set<PositionCallback>>(new Set());
   const wsRef = useRef<WebSocket | null>(null);
@@ -82,6 +91,12 @@ export function useWebSocket(
               }
               return next;
             });
+          } else if (msg.type === "marketState") {
+            const update = msg.data as MarketStateWsUpdate;
+            setMarketStates((prev) => ({
+              ...prev,
+              [update.feedId]: update,
+            }));
           } else if (msg.type === "position") {
             const update = msg.data as PositionUpdate;
             for (const cb of positionCallbacksRef.current) {
@@ -103,5 +118,5 @@ export function useWebSocket(
     };
   }, [url]);
 
-  return { prices, vammPrices, connected, onPositionUpdate };
+  return { prices, vammPrices, marketStates, connected, onPositionUpdate };
 }

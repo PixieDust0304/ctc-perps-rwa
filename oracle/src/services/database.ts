@@ -159,7 +159,8 @@ export async function logMarketState(
   feedId: number,
   state: string,
   price: string | null,
-  timestamp: Date
+  timestamp: Date,
+  reason?: string
 ): Promise<void> {
   // Always store in-memory
   inMemoryMarketStates.push({
@@ -193,6 +194,7 @@ export async function logMarketState(
         feedId,
         state,
         price: price ? BigInt(price).toString() : null,
+        reason: reason ?? null,
         timestamp,
       },
     });

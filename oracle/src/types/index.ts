@@ -34,12 +34,19 @@ export interface PriceTick {
   timestamp: number; // ms
   fresh: boolean;
   source?: "oracle" | "vamm";
+  errorCode?: string; // Autonom error code (e.g. "MARKET_CLOSED", "SELECTION_FAILED")
 }
+
+export type MarketState = "OPEN" | "PAUSED" | "CLOSED";
 
 export interface MarketStateUpdate {
   feedId: number;
+  /** Three-state: OPEN (oracle trading), PAUSED (no trading), CLOSED (P2P trading) */
+  state: MarketState;
+  /** Backward-compatible: true only when state === "OPEN" */
   isOpen: boolean;
   timestamp: number;
+  reason?: string;
 }
 
 export interface WebSocketMessage {

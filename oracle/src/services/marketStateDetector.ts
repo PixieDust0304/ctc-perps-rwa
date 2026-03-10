@@ -1,37 +1,118 @@
 import { logger } from "../utils/logger.js";
 import { config } from "../config/index.js";
-import type { PriceTick, MarketStateUpdate } from "../types/index.js";
+import { getScheduleWindow } from "./scheduleProvider.js";
+import type { PriceTick, MarketStateUpdate, MarketState } from "../types/index.js";
 
 interface FeedState {
-  /** Current confirmed market state (true = open) */
-  isOpen: boolean;
-  /** How many consecutive readings agree with the PENDING state (not the current one) */
+  /** Current confirmed three-state */
+  state: MarketState;
+  /** Debounce: how many consecutive readings agree with the pending state */
   pendingCount: number;
   /** The state those consecutive readings are suggesting */
-  pendingState: boolean;
+  pendingState: MarketState;
   /** Timestamp of the last confirmed state transition */
   lastTransitionAt: number;
+  /** Last schedule-driven state (for detecting schedule boundary changes) */
+  lastScheduleWindow: "market_hours" | "off_hours";
 }
 
 // Per-feed confirmed state + debounce tracking
 const feedStates: Record<number, FeedState> = {};
+// Throttle noisy debounce logs (reset/flip) to once per 30s per feed
+const lastDebounceLogAt: Record<number, number> = {};
 
 /**
- * Detect market state transitions from fresh flag changes.
+ * Determine the desired market state for a single tick based on:
+ * 1. Autonom MARKET_CLOSED error code → CLOSED (overrides schedule)
+ * 2. Schedule says off-hours → CLOSED
+ * 3. Schedule says market hours + oracle fresh → OPEN
+ * 4. Schedule says market hours + oracle stale/frozen → PAUSED
+ */
+function determineDesiredState(tick: PriceTick): { state: MarketState; reason: string } {
+  // Rule 1: Autonom MARKET_CLOSED overrides schedule (handles holidays, early closes)
+  if (tick.errorCode === "MARKET_CLOSED") {
+    return { state: "CLOSED", reason: "Autonom MARKET_CLOSED (holiday/early close)" };
+  }
+
+  // Rule 2: Schedule says off-hours → CLOSED
+  const schedule = getScheduleWindow();
+  if (schedule === "off_hours") {
+    return { state: "CLOSED", reason: "Schedule: off-hours (weekend)" };
+  }
+
+  // Rule 3 & 4: Schedule says market hours
+  if (tick.fresh) {
+    return { state: "OPEN", reason: "Schedule: market hours + oracle fresh" };
+  }
+
+  return { state: "PAUSED", reason: "Schedule: market hours + oracle stale/frozen" };
+}
+
+/**
+ * Get required confirmations for a transition.
  *
- * Applies two safeguards against false transitions (e.g. Autonom lag):
+ * Schedule-driven transitions (to/from CLOSED via schedule boundary) have NO debounce.
+ * MARKET_CLOSED override: 3 readings (~1.5s) — authoritative with minimal noise filter.
+ * OPEN → PAUSED: 60 readings (30s) — conservative, prevents false pauses.
+ * PAUSED → OPEN: 6 readings (3s) — quick recovery, fresh data is strong signal.
+ */
+function getRequiredConfirmations(
+  from: MarketState,
+  to: MarketState,
+  isScheduleTransition: boolean,
+  isMarketClosedOverride: boolean
+): number {
+  // Schedule boundary transitions are deterministic — no debounce
+  if (isScheduleTransition) return 0;
+
+  // MARKET_CLOSED error override — minimal debounce
+  if (isMarketClosedOverride) return config.marketClosedOverrideConfirmations;
+
+  // OPEN ↔ PAUSED transitions within market hours
+  if (from === "OPEN" && to === "PAUSED") return config.marketCloseConfirmations;
+  if (from === "PAUSED" && to === "OPEN") return config.marketOpenConfirmations;
+
+  // CLOSED → PAUSED (market opens, no data yet) — immediate
+  if (from === "CLOSED" && to === "PAUSED") return 0;
+  // CLOSED → OPEN (market opens with data) — quick
+  if (from === "CLOSED" && to === "OPEN") return config.marketOpenConfirmations;
+
+  // PAUSED → CLOSED (MARKET_CLOSED during pause) — use override confirmations
+  if (from === "PAUSED" && to === "CLOSED") return config.marketClosedOverrideConfirmations;
+  // OPEN → CLOSED (MARKET_CLOSED during open) — use override confirmations
+  if (from === "OPEN" && to === "CLOSED") return config.marketClosedOverrideConfirmations;
+
+  return config.marketCloseConfirmations; // fallback: conservative
+}
+
+/**
+ * Check if cooldown applies for a transition.
+ * Cooldown only applies to OPEN ↔ PAUSED flip-flops during market hours.
+ * Schedule-driven and MARKET_CLOSED transitions are never cooled down.
+ */
+function isCooldownApplicable(
+  from: MarketState,
+  to: MarketState,
+  isScheduleTransition: boolean,
+  isMarketClosedOverride: boolean
+): boolean {
+  if (isScheduleTransition || isMarketClosedOverride) return false;
+  // Cooldown only for mid-hours oscillation
+  return (from === "OPEN" && to === "PAUSED") || (from === "PAUSED" && to === "OPEN");
+}
+
+/**
+ * Detect market state transitions from price ticks.
  *
- * 1. **Debounce** — A state change requires N consecutive readings in the
- *    new state before it fires. Closing requires more confirmations than
- *    opening because a false close (triggering VAMM + settlements) is far
- *    more damaging than a slightly delayed close detection.
- *
- * 2. **Cooldown** — After a transition fires, the opposite transition is
- *    suppressed for a configurable duration. This kills flip-flops dead.
+ * Three-state machine: OPEN, PAUSED, CLOSED.
+ * - Schedule-driven transitions (weekend boundaries) fire immediately.
+ * - MARKET_CLOSED override fires after 3 readings.
+ * - OPEN ↔ PAUSED uses existing debounce (60/6) + cooldown (5min).
  */
 export function detectMarketStateChanges(ticks: PriceTick[]): MarketStateUpdate[] {
   const updates: MarketStateUpdate[] = [];
   const now = Date.now();
+  const currentSchedule = getScheduleWindow();
 
   for (const tick of ticks) {
     let state = feedStates[tick.feedId];
@@ -39,95 +120,139 @@ export function detectMarketStateChanges(ticks: PriceTick[]): MarketStateUpdate[
 
     // First reading ever — initialize and emit initial state
     if (!state) {
+      const { state: desired, reason } = determineDesiredState(tick);
       feedStates[tick.feedId] = {
-        isOpen: tick.fresh,
+        state: desired,
         pendingCount: 0,
-        pendingState: tick.fresh,
+        pendingState: desired,
         lastTransitionAt: now,
+        lastScheduleWindow: currentSchedule,
       };
 
       updates.push({
         feedId: tick.feedId,
-        isOpen: tick.fresh,
+        state: desired,
+        isOpen: desired === "OPEN",
         timestamp: tick.timestamp,
+        reason,
       });
-      logger.info("MarketState", `${feedName} market ${tick.fresh ? "OPEN" : "CLOSED"} (initial)`);
+      logger.info("MarketState", `${feedName} market ${desired} (initial: ${reason})`);
       continue;
     }
 
-    const incomingState = tick.fresh; // true = open, false = closed
+    const { state: desired, reason } = determineDesiredState(tick);
 
-    // If the incoming state matches the CONFIRMED state, reset debounce
-    if (incomingState === state.isOpen) {
+    // Detect schedule boundary change (deterministic, no debounce)
+    const isScheduleTransition = currentSchedule !== state.lastScheduleWindow;
+    state.lastScheduleWindow = currentSchedule;
+
+    // If the desired state matches confirmed state, reset debounce
+    if (desired === state.state) {
       if (state.pendingCount > 0) {
-        logger.info(
-          "MarketState",
-          `${feedName}: reading agrees with confirmed=${state.isOpen ? "OPEN" : "CLOSED"}, resetting debounce (was at ${state.pendingCount})`
-        );
+        const lastLog = lastDebounceLogAt[tick.feedId] ?? 0;
+        if (now - lastLog > 30_000) {
+          logger.info(
+            "MarketState",
+            `${feedName}: reading agrees with confirmed=${state.state}, resetting debounce (was at ${state.pendingCount})`
+          );
+          lastDebounceLogAt[tick.feedId] = now;
+        }
       }
       state.pendingCount = 0;
-      state.pendingState = incomingState;
+      state.pendingState = desired;
       continue;
     }
 
-    // Incoming state differs from confirmed state — accumulate debounce
-    if (incomingState === state.pendingState) {
-      state.pendingCount++;
-    } else {
-      // Direction flipped mid-debounce (noise) — restart counter
+    const isMarketClosedOverride = tick.errorCode === "MARKET_CLOSED";
+
+    // Schedule transitions fire immediately (0 confirmations required)
+    if (isScheduleTransition) {
+      const prevState = state.state;
+      state.state = desired;
+      state.pendingCount = 0;
+      state.pendingState = desired;
+      state.lastTransitionAt = now;
+
+      updates.push({
+        feedId: tick.feedId,
+        state: desired,
+        isOpen: desired === "OPEN",
+        timestamp: tick.timestamp,
+        reason,
+      });
       logger.info(
         "MarketState",
-        `${feedName}: direction flipped mid-debounce (was counting toward ${state.pendingState ? "OPEN" : "CLOSED"} at ${state.pendingCount}), restarting toward ${incomingState ? "OPEN" : "CLOSED"}`
+        `*** ${feedName} market ${prevState} -> ${desired} (schedule boundary: ${reason}) ***`
       );
-      state.pendingState = incomingState;
+      continue;
+    }
+
+    // Accumulate debounce for non-schedule transitions
+    if (desired === state.pendingState) {
+      state.pendingCount++;
+    } else {
+      const lastLog = lastDebounceLogAt[tick.feedId] ?? 0;
+      if (now - lastLog > 30_000) {
+        logger.info(
+          "MarketState",
+          `${feedName}: direction flipped mid-debounce (was counting toward ${state.pendingState} at ${state.pendingCount}), restarting toward ${desired}`
+        );
+        lastDebounceLogAt[tick.feedId] = now;
+      }
+      state.pendingState = desired;
       state.pendingCount = 1;
     }
 
-    // Determine required confirmations
-    const requiredConfirmations = incomingState
-      ? config.marketOpenConfirmations   // opening: quick recovery
-      : config.marketCloseConfirmations; // closing: high confidence needed
+    const requiredConfirmations = getRequiredConfirmations(
+      state.state,
+      desired,
+      false,
+      isMarketClosedOverride
+    );
 
     // Log debounce progress periodically
-    if (state.pendingCount % 10 === 0 || state.pendingCount === requiredConfirmations) {
+    if (requiredConfirmations > 0 && (state.pendingCount % 10 === 0 || state.pendingCount === requiredConfirmations)) {
       logger.info(
         "MarketState",
-        `${feedName}: debounce ${state.pendingCount}/${requiredConfirmations} toward ${incomingState ? "OPEN" : "CLOSED"} (confirmed=${state.isOpen ? "OPEN" : "CLOSED"})`
+        `${feedName}: debounce ${state.pendingCount}/${requiredConfirmations} toward ${desired} (confirmed=${state.state})`
       );
     }
 
     if (state.pendingCount < requiredConfirmations) {
-      continue; // not enough consecutive readings yet
+      continue;
     }
 
-    // Check cooldown — don't allow opposite transition too soon
-    if (state.lastTransitionAt > 0) {
-      const elapsed = now - state.lastTransitionAt;
-      if (elapsed < config.marketStateCooldownMs) {
-        logger.info(
-          "MarketState",
-          `${feedName}: transition to ${incomingState ? "OPEN" : "CLOSED"} SUPPRESSED by cooldown (${Math.round((config.marketStateCooldownMs - elapsed) / 1000)}s remaining of ${config.marketStateCooldownMs / 1000}s)`
-        );
-        continue;
+    // Check cooldown
+    if (isCooldownApplicable(state.state, desired, false, isMarketClosedOverride)) {
+      if (state.lastTransitionAt > 0) {
+        const elapsed = now - state.lastTransitionAt;
+        if (elapsed < config.marketStateCooldownMs) {
+          logger.info(
+            "MarketState",
+            `${feedName}: transition to ${desired} SUPPRESSED by cooldown (${Math.round((config.marketStateCooldownMs - elapsed) / 1000)}s remaining)`
+          );
+          continue;
+        }
       }
     }
 
     // Transition confirmed!
-    const prevState = state.isOpen;
-    state.isOpen = incomingState;
+    const prevState = state.state;
+    state.state = desired;
     state.pendingCount = 0;
     state.lastTransitionAt = now;
 
     updates.push({
       feedId: tick.feedId,
-      isOpen: incomingState,
+      state: desired,
+      isOpen: desired === "OPEN",
       timestamp: tick.timestamp,
+      reason,
     });
 
-    const stateStr = incomingState ? "OPEN" : "CLOSED";
     logger.info(
       "MarketState",
-      `*** ${feedName} market ${prevState ? "OPEN" : "CLOSED"} -> ${stateStr} (confirmed after ${requiredConfirmations} readings) ***`
+      `*** ${feedName} market ${prevState} -> ${desired} (confirmed after ${requiredConfirmations} readings: ${reason}) ***`
     );
   }
 
@@ -137,6 +262,19 @@ export function detectMarketStateChanges(ticks: PriceTick[]): MarketStateUpdate[
 /**
  * Get current confirmed market state for a feed
  */
+export function getMarketState(feedId: number): MarketState {
+  return feedStates[feedId]?.state ?? "CLOSED";
+}
+
+/**
+ * Backward-compatible: returns true only when state === "OPEN"
+ */
 export function isMarketOpen(feedId: number): boolean {
-  return feedStates[feedId]?.isOpen ?? false;
+  return feedStates[feedId]?.state === "OPEN";
+}
+
+/** Reset module-level state (for testing only) */
+export function _resetMarketStateDetector(): void {
+  for (const key of Object.keys(feedStates)) delete feedStates[Number(key)];
+  for (const key of Object.keys(lastDebounceLogAt)) delete lastDebounceLogAt[Number(key)];
 }

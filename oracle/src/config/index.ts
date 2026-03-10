@@ -78,6 +78,13 @@ export const config = {
   marketOpenConfirmations: Number(process.env.MARKET_OPEN_CONFIRMATIONS || "6"),
   marketStateCooldownMs: Number(process.env.MARKET_STATE_COOLDOWN_MS || "300000"),
 
+  // Schedule — CME Globex hours for all 4 commodities
+  scheduleEnabled: process.env.SCHEDULE_ENABLED !== "false", // default: enabled
+  scheduleTimezone: "America/Chicago",
+
+  // MARKET_CLOSED override debounce — 3 consecutive readings (~1.5s)
+  marketClosedOverrideConfirmations: Number(process.env.MARKET_CLOSED_OVERRIDE_CONFIRMATIONS || "3"),
+
   // Server
   wsPort: Number(process.env.WS_PORT || "8080"),
   apiPort: Number(process.env.PORT || process.env.API_PORT || "3001"),

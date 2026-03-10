@@ -39,6 +39,7 @@ model MarketStateLog {
   feedId    Int
   state     String
   price     Decimal? @db.Decimal(78, 0)
+  reason    String?
   timestamp DateTime
 }
 

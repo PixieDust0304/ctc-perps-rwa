@@ -2,7 +2,7 @@ import { config } from "./config/index.js";
 import { startFetcher } from "./services/fetcher.js";
 import { pushPrices } from "./services/chainPusher.js";
 import { storePriceTicks, getCandlesAsync, getLatestPrice, getPriceMovement } from "./services/priceStore.js";
-import { detectMarketStateChanges } from "./services/marketStateDetector.js";
+import { detectMarketStateChanges, getMarketState } from "./services/marketStateDetector.js";
 import { initDatabase, queryPositions, queryPositionsByType, queryMarketStates, getPrisma, logMarketState } from "./services/database.js";
 import {
   startWebSocketServer,
@@ -128,6 +128,18 @@ async function main() {
     res.json({ status: "ok", timestamp: Date.now() });
   });
 
+  app.get("/api/market-state/:feedId", (req, res) => {
+    const feedId = parseInt(req.params.feedId);
+    const state = getMarketState(feedId);
+    res.json({
+      feedId,
+      state,
+      isOpen: state === "OPEN",
+      isPaused: state === "PAUSED",
+      isClosed: state === "CLOSED",
+    });
+  });
+
   app.get("/api/market-states", async (req, res) => {
     const feedId = parseInt((req.query.feedId as string) || "0");
     const limit = parseInt((req.query.limit as string) || "100");
@@ -214,8 +226,9 @@ async function main() {
     // 2. Broadcast to WebSocket clients
     broadcastPrices(ticks);
 
-    // 2b. For closed markets, broadcast VAMM prices + inject synthetic ticks
-    if (config.vammAddress && config.marketStateAddress) {
+    // 2b. For CLOSED markets (NOT paused), broadcast VAMM prices + inject synthetic ticks
+    // During PAUSED state, no VAMM prices — we're still in market hours, just waiting for data
+    if (config.vammAddress) {
       try {
         const vammClient = createPublicClient({
           chain: getChain(),
@@ -223,13 +236,8 @@ async function main() {
         });
         const vammPriceUpdates: { feedId: number; price: string; timestamp: number }[] = [];
         for (const feedId of config.feedIds) {
-          const isOpen = await vammClient.readContract({
-            address: config.marketStateAddress as Hex,
-            abi: MarketStateABI,
-            functionName: "isMarketOpen",
-            args: [feedId],
-          }) as boolean;
-          if (isOpen) continue;
+          // Only inject VAMM prices when market is CLOSED (P2P active), not PAUSED
+          if (getMarketState(feedId) !== "CLOSED") continue;
           const vammState = await vammClient.readContract({
             address: config.vammAddress as Hex,
             abi: VAMMABI,
@@ -272,20 +280,25 @@ async function main() {
     if (stateChanges.length > 0) {
       for (const sc of stateChanges) {
         const feedName = config.feedNames[sc.feedId] || `Feed ${sc.feedId}`;
-        logger.info("Pipeline", `*** MARKET STATE CHANGE: ${feedName} → ${sc.isOpen ? "OPEN" : "CLOSED"} ***`);
+        logger.info("Pipeline", `*** MARKET STATE CHANGE: ${feedName} → ${sc.state} (${sc.reason ?? ""}) ***`);
       }
+
+      // Broadcast ALL state changes (OPEN, PAUSED, CLOSED) to WS clients
       broadcastMarketState(stateChanges);
 
-      // Log market state transitions to DB
+      // Log ALL transitions to DB
       for (const sc of stateChanges) {
         const tick = ticks.find(t => t.feedId === sc.feedId);
-        logMarketState(sc.feedId, sc.isOpen ? "open" : "closed", tick?.price.toString() ?? null, new Date(sc.timestamp));
+        logMarketState(sc.feedId, sc.state.toLowerCase(), tick?.price.toString() ?? null, new Date(sc.timestamp), sc.reason);
       }
 
-      // Handle market state transitions (P2P settlement with coordinator lock)
-      logger.info("Pipeline", `Triggering settlement for ${stateChanges.length} state change(s)`);
-      await handleMarketOpenSettlement(stateChanges);
-      logger.info("Pipeline", "Settlement handler returned");
+      // On-chain settlement only for OPEN↔CLOSED transitions (skip PAUSED)
+      const onChainChanges = stateChanges.filter(sc => sc.state === "OPEN" || sc.state === "CLOSED");
+      if (onChainChanges.length > 0) {
+        logger.info("Pipeline", `Triggering settlement for ${onChainChanges.length} on-chain state change(s) (${stateChanges.length - onChainChanges.length} PAUSED skipped)`);
+        await handleMarketOpenSettlement(onChainChanges);
+        logger.info("Pipeline", "Settlement handler returned");
+      }
     }
   });
 

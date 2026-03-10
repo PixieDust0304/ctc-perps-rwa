@@ -31,12 +31,12 @@ export async function fetchPrices(): Promise<PriceTick[]> {
 
   const data: AutonomResponse = await response.json();
 
-  // Build per-feed error set — ANY error code means the feed is unavailable/closed
-  const errorFeedIds = new Set<number>();
+  // Build per-feed error map — tracks error code for downstream (marketStateDetector)
+  const feedErrorCodes = new Map<number, string>();
   const now = Date.now();
   if (data.errors) {
     for (const e of data.errors) {
-      errorFeedIds.add(e.feed_id);
+      feedErrorCodes.set(e.feed_id, e.code);
       const lastLog = lastErrorLogAt[e.feed_id] || 0;
       if (now - lastLog > 30_000) {
         logger.info(
@@ -54,7 +54,7 @@ export async function fetchPrices(): Promise<PriceTick[]> {
   // Process returned prices — per-feed fresh determination
   for (const p of data.prices) {
     seenFeeds.add(p.feed_id);
-    const feedHasError = errorFeedIds.has(p.feed_id);
+    const feedHasError = feedErrorCodes.has(p.feed_id);
     const ageMs = now - p.timestamp;
     const feedStale = ageMs > config.stalenessThresholdMs;
 
@@ -89,6 +89,7 @@ export async function fetchPrices(): Promise<PriceTick[]> {
       price: BigInt(p.price) * ORACLE_TO_18_MULTIPLIER,
       timestamp: p.timestamp,
       fresh,
+      errorCode: feedErrorCodes.get(p.feed_id),
     });
   }
 
@@ -99,7 +100,7 @@ export async function fetchPrices(): Promise<PriceTick[]> {
     if (!seenFeeds.has(feedId)) {
       const last = getLatestPrice(feedId);
       const feedName = config.feedNames[feedId] || `Feed ${feedId}`;
-      const hasError = errorFeedIds.has(feedId);
+      const hasError = feedErrorCodes.has(feedId);
       const lastLog = lastMissingLogAt[feedId] || 0;
       if (now - lastLog > 30_000) {
         logger.info(
@@ -114,6 +115,7 @@ export async function fetchPrices(): Promise<PriceTick[]> {
         price: last ? last.price : 0n,
         timestamp: last ? last.timestamp : now,
         fresh: false, // Always stale — feed is missing/errored
+        errorCode: feedErrorCodes.get(feedId),
       });
     }
   }

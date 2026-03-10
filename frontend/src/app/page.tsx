@@ -55,7 +55,8 @@ export default function TradingPage() {
         {/* Market Status */}
         <MarketStatusBanner
           feedId={selectedFeedId}
-          fresh={selectedPrice?.fresh ?? false}
+          marketState={selectedPrice?.marketState ?? "CLOSED"}
+          reason={selectedPrice?.marketStateReason}
         />
 
         {/* Market Selector — metallic badges */}
@@ -86,7 +87,7 @@ export default function TradingPage() {
             <OrderPanel
               feedId={selectedFeedId}
               currentPrice={selectedPrice?.price ?? 0}
-              isMarketOpen={selectedPrice?.fresh ?? false}
+              marketState={selectedPrice?.marketState ?? "CLOSED"}
             />
           </div>
         </div>
