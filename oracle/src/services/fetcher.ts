@@ -11,6 +11,8 @@ let lastBatchSignature = "";
 const lastStaleLogAt: Record<number, number> = {};
 const lastMissingLogAt: Record<number, number> = {};
 const lastErrorLogAt: Record<number, number> = {};
+const lastTimestampAdvanceAt: Record<number, number> = {};
+const lastSeenTimestamp: Record<number, number> = {};
 
 /**
  * Fetch latest prices from Autonom oracle API
@@ -55,7 +57,19 @@ export async function fetchPrices(): Promise<PriceTick[]> {
     const feedHasError = errorFeedIds.has(p.feed_id);
     const ageMs = now - p.timestamp;
     const feedStale = ageMs > config.stalenessThresholdMs;
-    const fresh = !feedHasError && !feedStale;
+
+    // Detect frozen upstream timestamps: if the source timestamp hasn't advanced
+    // for frozenTimestampThresholdMs (default 30s), mark stale early — don't wait
+    // for the full 210s age threshold to expire on-chain.
+    const prevTimestamp = lastSeenTimestamp[p.feed_id];
+    if (prevTimestamp === undefined || p.timestamp > prevTimestamp) {
+      lastTimestampAdvanceAt[p.feed_id] = now;
+    }
+    lastSeenTimestamp[p.feed_id] = p.timestamp;
+    const timeSinceLastAdvance = now - (lastTimestampAdvanceAt[p.feed_id] ?? now);
+    const isFrozen = timeSinceLastAdvance > config.frozenTimestampThresholdMs;
+
+    const fresh = !feedHasError && !feedStale && !isFrozen;
     const feedName = config.feedNames[p.feed_id] || `Feed ${p.feed_id}`;
 
     if (!fresh) {
@@ -63,7 +77,7 @@ export async function fetchPrices(): Promise<PriceTick[]> {
       if (now - lastLog > 30_000) {
         logger.info(
           "Fetcher",
-          `${feedName}: STALE (age=${Math.round(ageMs / 1000)}s, threshold=${config.stalenessThresholdMs / 1000}s, error=${feedHasError})`
+          `${feedName}: STALE (age=${Math.round(ageMs / 1000)}s, threshold=${config.stalenessThresholdMs / 1000}s, error=${feedHasError}, frozen=${isFrozen}${isFrozen ? ` [${Math.round(timeSinceLastAdvance / 1000)}s since last advance]` : ""})`
         );
         lastStaleLogAt[p.feed_id] = now;
       }
@@ -118,6 +132,17 @@ export async function fetchPrices(): Promise<PriceTick[]> {
   }
 
   return ticks;
+}
+
+/** Reset module-level state (for testing only) */
+export function _resetFetcherState(): void {
+  lastBatchLogAt = 0;
+  lastBatchSignature = "";
+  for (const key of Object.keys(lastStaleLogAt)) delete lastStaleLogAt[Number(key)];
+  for (const key of Object.keys(lastMissingLogAt)) delete lastMissingLogAt[Number(key)];
+  for (const key of Object.keys(lastErrorLogAt)) delete lastErrorLogAt[Number(key)];
+  for (const key of Object.keys(lastTimestampAdvanceAt)) delete lastTimestampAdvanceAt[Number(key)];
+  for (const key of Object.keys(lastSeenTimestamp)) delete lastSeenTimestamp[Number(key)];
 }
 
 /**

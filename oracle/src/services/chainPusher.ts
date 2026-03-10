@@ -14,6 +14,7 @@ import { checkAndLiquidateAll } from "../keepers/liquidationEngine.js";
 import type { PriceTick } from "../types/index.js";
 
 let lastPushedTimestamps: Record<number, number> = {};
+let lastPushedFreshFlags: Record<number, boolean> = {};
 let hasEverPushed = false;
 let lastPushLogAt = 0;
 let lastChainPushAt = 0;
@@ -31,11 +32,18 @@ export async function pushPrices(ticks: PriceTick[]): Promise<void> {
   const now = Date.now();
   if (hasEverPushed && now - lastChainPushAt < config.blockTimeMs) return;
 
-  // First push: include stale ticks so on-chain Oracle has data for MarketState
-  // After that: only push fresh ticks
-  const filteredTicks = ticks.filter(
-    (t) => t.rawPrice > 0n && t.timestamp > (lastPushedTimestamps[t.feedId] || 0) && (t.fresh || !hasEverPushed)
-  );
+  // First push: include all ticks so on-chain Oracle has data for MarketState.
+  // After that: push fresh ticks with advancing timestamps, OR push once when
+  // a feed's fresh flag flips to false (frozen upstream) to flip on-chain fresh.
+  const filteredTicks = ticks.filter((t) => {
+    if (t.rawPrice <= 0n) return false;
+    if (!hasEverPushed) return true;
+    const lastTs = lastPushedTimestamps[t.feedId] || 0;
+    if (t.timestamp > lastTs) return true;
+    // Frozen timestamp: push once when fresh flips to false
+    if (!t.fresh && lastPushedFreshFlags[t.feedId] === true) return true;
+    return false;
+  });
   if (filteredTicks.length === 0) return;
 
   if (now - lastPushLogAt > 10_000) {
@@ -48,7 +56,20 @@ export async function pushPrices(ticks: PriceTick[]): Promise<void> {
 
   const feedIds = filteredTicks.map((t) => t.feedId);
   const rawPrices = filteredTicks.map((t) => t.rawPrice);
-  const timestamps = filteredTicks.map((t) => BigInt(Math.floor(t.timestamp / 1000)));
+  // Use synthetic timestamp when the tick's timestamp hasn't advanced past the
+  // last push — satisfies Oracle's strictly-increasing requirement while flipping
+  // the on-chain fresh flag. Uses max(lastPushed+1, wallClock) so that after a
+  // service restart the synthetic always exceeds any previously pushed value.
+  const currentTimeSec = BigInt(Math.floor(Date.now() / 1000));
+  const timestamps = filteredTicks.map((t) => {
+    const tickTsSec = BigInt(Math.floor(t.timestamp / 1000));
+    const lastPushedSec = BigInt(Math.floor((lastPushedTimestamps[t.feedId] || 0) / 1000));
+    if (tickTsSec > lastPushedSec) return tickTsSec;
+    // Synthetic: use whichever is larger — handles restart where lastPushedSec
+    // is 0 but on-chain has a previous synthetic from a prior run.
+    const synthetic = lastPushedSec + 1n;
+    return synthetic > currentTimeSec ? synthetic : currentTimeSec;
+  });
   const freshFlags = filteredTicks.map((t) => t.fresh);
 
   let pushSucceeded = false;
@@ -106,11 +127,23 @@ export async function pushPrices(ticks: PriceTick[]): Promise<void> {
     }
   }
 
-  // Always update timestamps to avoid re-attempting same data or same block
+  // Always update timestamps to avoid re-attempting same data or same block.
+  // Store max(tick ms, synthetic ms) so the ms-precision comparison on line 42
+  // correctly rejects ticks whose timestamp hasn't truly advanced.
   lastChainPushAt = Date.now();
   hasEverPushed = true;
-  for (const tick of filteredTicks) {
-    lastPushedTimestamps[tick.feedId] = tick.timestamp;
+  for (let i = 0; i < filteredTicks.length; i++) {
+    const syntheticMs = Number(timestamps[i]) * 1000;
+    lastPushedTimestamps[filteredTicks[i].feedId] = Math.max(filteredTicks[i].timestamp, syntheticMs);
+  }
+
+  // Only update fresh flags when on-chain state reflects our intent.
+  // If push failed, keep lastPushedFreshFlags unchanged so the one-shot
+  // stale push can retry on the next cycle.
+  if (pushSucceeded) {
+    for (let i = 0; i < filteredTicks.length; i++) {
+      lastPushedFreshFlags[filteredTicks[i].feedId] = filteredTicks[i].fresh;
+    }
   }
 
   // Post-push hooks: fee accrual + liquidation
@@ -130,4 +163,13 @@ export async function pushPrices(ticks: PriceTick[]): Promise<void> {
   } else {
     logger.warn("ChainPusher", "Skipping liquidation check — on-chain price not confirmed current");
   }
+}
+
+/** Reset module-level state (for testing only) */
+export function _resetChainPusherState(): void {
+  lastPushedTimestamps = {};
+  lastPushedFreshFlags = {};
+  hasEverPushed = false;
+  lastPushLogAt = 0;
+  lastChainPushAt = 0;
 }

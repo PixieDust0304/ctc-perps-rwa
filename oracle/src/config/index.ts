@@ -63,6 +63,7 @@ export const config = {
   // Timings
   fetchIntervalMs: 500,
   stalenessThresholdMs: 210_000,
+  frozenTimestampThresholdMs: Number(process.env.FROZEN_TIMESTAMP_THRESHOLD_MS || "30000"),
   feeInterval: 15,
 
   // Block time — all chain-dependent intervals derive from this.
