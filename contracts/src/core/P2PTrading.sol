@@ -196,7 +196,9 @@ contract P2PTrading is IP2PTrading, OwnableUpgradeable, UUPSUpgradeable, Pausabl
         }
 
         // Mark settled before external calls (checks-effects-interactions)
-        int256 realizedPnl = isProfit ? int256(pnl) : -int256(pnl);
+        int256 realizedPnl = isProfit
+            ? int256(cappedPnl)
+            : -int256(pnl >= pos.collateral ? pos.collateral : pnl);
         pos.isSettled = true;
 
         // Pay trader

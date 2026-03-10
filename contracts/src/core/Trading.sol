@@ -292,7 +292,7 @@ contract Trading is ITrading, OwnableUpgradeable, UUPSUpgradeable, PausableUpgra
 
         // PnL impact to pool: positive = pool gains (trader lost), negative = pool loses (trader won)
         int256 pnlImpact = int256(pos.collateral) - int256(payoutBeforeFees);
-        int256 realizedPnl = isProfit ? int256(pnl) : -int256(pnl);
+        int256 realizedPnl = int256(payoutBeforeFees) - int256(pos.collateral);
 
         // Clear position BEFORE external calls (CEI pattern)
         // pos is a memory copy, so all data we need is preserved
