@@ -7,7 +7,7 @@ import { CONTRACTS, CUSTODY_ABI, CUSTODY_ADDRESSES } from "../../lib/contracts";
 import { IconVault } from "../AppSidebar";
 
 interface MarketSelectorProps {
-  prices: { id: number; name: string; price: number; fresh: boolean }[];
+  prices: { id: number; name: string; price: number; fresh: boolean; marketState: "OPEN" | "PAUSED" | "CLOSED" }[];
   selectedFeedId: number;
   onSelect: (id: number) => void;
 }
@@ -62,7 +62,7 @@ export function MarketSelector({
           const price = prices.find((p) => p.id === feed.id);
           const meta = COMMODITY_META[feed.name] || { badge: "", emoji: "📈", label: feed.name };
           const isSelected = selectedFeedId === feed.id;
-          const isStale = price && !price.fresh;
+          const isStale = price ? price.marketState !== "OPEN" : false;
 
           return (
             <button
@@ -103,8 +103,12 @@ export function MarketSelector({
                   <div
                     className="w-1.5 h-1.5 rounded-full"
                     style={{
-                      background: isStale ? "var(--trade-red)" : "var(--profit-green)",
-                      boxShadow: isStale ? "0 0 4px var(--trade-red-glow)" : "0 0 4px var(--profit-green-glow)",
+                      background: price?.marketState === "OPEN" ? "var(--profit-green)"
+                        : price?.marketState === "PAUSED" ? "var(--pixel-yellow)"
+                        : "var(--trade-red)",
+                      boxShadow: price?.marketState === "OPEN" ? "0 0 4px var(--profit-green-glow)"
+                        : price?.marketState === "PAUSED" ? "0 0 4px rgba(255, 212, 0, 0.4)"
+                        : "0 0 4px var(--trade-red-glow)",
                     }}
                   />
                 </div>

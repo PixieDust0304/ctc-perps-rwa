@@ -125,7 +125,7 @@ export function detectMarketStateChanges(ticks: PriceTick[]): MarketStateUpdate[
         state: desired,
         pendingCount: 0,
         pendingState: desired,
-        lastTransitionAt: now,
+        lastTransitionAt: 0,
         lastScheduleWindow: currentSchedule,
       };
 

@@ -63,7 +63,7 @@ export const config = {
   // Timings
   fetchIntervalMs: 500,
   stalenessThresholdMs: 210_000,
-  frozenTimestampThresholdMs: Number(process.env.FROZEN_TIMESTAMP_THRESHOLD_MS || "30000"),
+  frozenTimestampThresholdMs: Number(process.env.FROZEN_TIMESTAMP_THRESHOLD_MS || "60000"),
   feeInterval: 15,
 
   // Block time — all chain-dependent intervals derive from this.
@@ -76,7 +76,7 @@ export const config = {
   // Cooldown prevents flip-flops entirely — no reverse transition within 5 minutes.
   marketCloseConfirmations: Number(process.env.MARKET_CLOSE_CONFIRMATIONS || "60"),
   marketOpenConfirmations: Number(process.env.MARKET_OPEN_CONFIRMATIONS || "6"),
-  marketStateCooldownMs: Number(process.env.MARKET_STATE_COOLDOWN_MS || "300000"),
+  marketStateCooldownMs: Number(process.env.MARKET_STATE_COOLDOWN_MS || "180000"),
 
   // Schedule — CME Globex hours for all 4 commodities
   scheduleEnabled: process.env.SCHEDULE_ENABLED !== "false", // default: enabled
