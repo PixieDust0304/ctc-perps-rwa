@@ -259,6 +259,12 @@ export async function persistPosition(pos: {
         collateral: pos.collateral,
         sizeUsd: pos.sizeUsd,
         entryPrice: pos.entryPrice,
+        // Recover wrongly-closed positions: persistPosition is only called for
+        // known-open positions (event handlers + reconciler after on-chain verify)
+        status: "open",
+        closedAt: null,
+        closeTxHash: null,
+        realizedPnl: null,
       },
       create: {
         positionId: pos.positionId,

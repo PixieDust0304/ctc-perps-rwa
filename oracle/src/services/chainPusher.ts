@@ -31,16 +31,10 @@ export async function pushPrices(ticks: PriceTick[]): Promise<void> {
   const now = Date.now();
   if (hasEverPushed && now - lastChainPushAt < config.blockTimeMs) return;
 
-  // Claim this time slot immediately (before async work) so concurrent
-  // setInterval callbacks are properly throttled
-  const isFirstPush = !hasEverPushed;
-  lastChainPushAt = now;
-  hasEverPushed = true;
-
   // First push: include stale ticks so on-chain Oracle has data for MarketState
   // After that: only push fresh ticks
   const filteredTicks = ticks.filter(
-    (t) => t.rawPrice > 0n && t.timestamp > (lastPushedTimestamps[t.feedId] || 0) && (t.fresh || isFirstPush)
+    (t) => t.rawPrice > 0n && t.timestamp > (lastPushedTimestamps[t.feedId] || 0) && (t.fresh || !hasEverPushed)
   );
   if (filteredTicks.length === 0) return;
 
@@ -112,7 +106,9 @@ export async function pushPrices(ticks: PriceTick[]): Promise<void> {
     }
   }
 
-  // Update per-feed timestamps to avoid re-attempting same Autonom data
+  // Always update timestamps to avoid re-attempting same data or same block
+  lastChainPushAt = Date.now();
+  hasEverPushed = true;
   for (const tick of filteredTicks) {
     lastPushedTimestamps[tick.feedId] = tick.timestamp;
   }

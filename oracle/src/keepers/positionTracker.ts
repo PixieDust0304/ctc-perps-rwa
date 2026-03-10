@@ -427,6 +427,9 @@ export function startWatching(): void {
       onLogs: (logs) => {
         for (const log of logs) {
           const args = log.args as { positionId: Hex; realizedPnl: bigint };
+          // Guard: only process closes for tracked positions (matches log polling behavior).
+          // CTC drops eth_newFilter filters, so stale/garbled events can arrive here.
+          if (!openPositions.has(args.positionId)) continue;
           const pos = openPositions.get(args.positionId);
           openPositions.delete(args.positionId);
           updatePositionStatus(args.positionId, "closed", args.realizedPnl?.toString(), log.transactionHash ?? undefined);
@@ -476,6 +479,7 @@ export function startWatching(): void {
       onLogs: (logs) => {
         for (const log of logs) {
           const args = log.args as { positionId: Hex };
+          if (!openPositions.has(args.positionId)) continue;
           const pos = openPositions.get(args.positionId);
           openPositions.delete(args.positionId);
           // PositionLiquidated doesn't emit realizedPnl — trader loses entire collateral
