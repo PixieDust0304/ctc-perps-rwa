@@ -250,7 +250,7 @@ async function settleAllP2PPositions(feedId: number): Promise<void> {
     return;
   }
 
-  logger.info("P2PSettlement", `Settling ${count} P2P positions for feed ${feedId}`);
+  logger.info("P2PSettlement", `Reading ${count} P2P position IDs for feed ${feedId}`);
 
   // Read all position IDs
   const positionIds: Hex[] = [];
@@ -264,43 +264,65 @@ async function settleAllP2PPositions(feedId: number): Promise<void> {
     positionIds.push(posId);
   }
 
-  // Get current oracle price for settlement
-  const priceData = (await publicClient.readContract({
-    address: config.oracleAddress as Hex,
-    abi: OracleABI,
-    functionName: "getPrice",
-    args: [feedId],
-  })) as { price: bigint; timestamp: bigint; fresh: boolean };
-
-  const settlementPrice = priceData.price;
-
-  // Batch settle in chunks
-  for (let i = 0; i < positionIds.length; i += BATCH_SIZE) {
-    const batch = positionIds.slice(i, i + BATCH_SIZE);
-
-    await retry(
-      async () => {
-        const { request } = await publicClient.simulateContract({
-          address: p2pAddr,
-          abi: P2PTradingABI,
-          functionName: "settleP2PBatch",
-          args: [batch, settlementPrice],
-          account: walletClient.account,
-        });
-
-        const txHash = await sendTx(request);
-        logger.info(
-          "P2PSettlement",
-          `Settled batch ${Math.floor(i / BATCH_SIZE) + 1} (${batch.length} positions), tx: ${txHash}`
-        );
-      },
-      3,
-      2000,
-      `settleP2PBatch-${feedId}`
-    );
+  // Pre-filter: read on-chain state and exclude already-settled positions
+  const activePositionIds: Hex[] = [];
+  for (const posId of positionIds) {
+    const pos = (await publicClient.readContract({
+      address: p2pAddr,
+      abi: P2PTradingABI,
+      functionName: "positions",
+      args: [posId],
+    })) as readonly [string, number, boolean, bigint, bigint, bigint, bigint, boolean];
+    const collateral = pos[3];
+    const isSettled = pos[7];
+    if (collateral > 0n && !isSettled) {
+      activePositionIds.push(posId);
+    }
   }
 
-  // Sweep leftover USDC
+  if (activePositionIds.length === 0) {
+    logger.info("P2PSettlement", `No active P2P positions for feed ${feedId} (${positionIds.length} total, all settled)`);
+  } else {
+    logger.info("P2PSettlement", `Settling ${activePositionIds.length} active P2P positions for feed ${feedId} (${positionIds.length - activePositionIds.length} already settled, skipped)`);
+
+    // Get current oracle price for settlement
+    const priceData = (await publicClient.readContract({
+      address: config.oracleAddress as Hex,
+      abi: OracleABI,
+      functionName: "getPrice",
+      args: [feedId],
+    })) as { price: bigint; timestamp: bigint; fresh: boolean };
+
+    const settlementPrice = priceData.price;
+
+    // Batch settle in chunks using only active positions
+    for (let i = 0; i < activePositionIds.length; i += BATCH_SIZE) {
+      const batch = activePositionIds.slice(i, i + BATCH_SIZE);
+
+      await retry(
+        async () => {
+          const { request } = await publicClient.simulateContract({
+            address: p2pAddr,
+            abi: P2PTradingABI,
+            functionName: "settleP2PBatch",
+            args: [batch, settlementPrice],
+            account: walletClient.account,
+          });
+
+          const txHash = await sendTx(request);
+          logger.info(
+            "P2PSettlement",
+            `Settled batch ${Math.floor(i / BATCH_SIZE) + 1} (${batch.length} positions), tx: ${txHash}`
+          );
+        },
+        3,
+        2000,
+        `settleP2PBatch-${feedId}`
+      );
+    }
+  }
+
+  // Sweep always runs — there may be leftover dust from prior settlements
   try {
     const { request } = await publicClient.simulateContract({
       address: p2pAddr,

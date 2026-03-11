@@ -303,14 +303,19 @@ async function main() {
       // Broadcast ALL state changes (OPEN, PAUSED, CLOSED) to WS clients
       broadcastMarketState(stateChanges);
 
-      // Log ALL transitions to DB
+      // Log transitions to DB — skip OPEN→PAUSED→OPEN recovery (not a real market opening)
       for (const sc of stateChanges) {
+        if (sc.state === "OPEN" && sc.previousState === "OPEN") continue;
         const tick = ticks.find(t => t.feedId === sc.feedId);
         logMarketState(sc.feedId, sc.state.toLowerCase(), tick?.price.toString() ?? null, new Date(sc.timestamp), sc.reason);
       }
 
-      // On-chain settlement only for OPEN↔CLOSED transitions (skip PAUSED)
-      const onChainChanges = stateChanges.filter(sc => sc.state === "OPEN" || sc.state === "CLOSED");
+      // On-chain settlement: skip PAUSED + skip OPEN→PAUSED→OPEN recovery
+      const onChainChanges = stateChanges.filter(sc => {
+        if (sc.state === "PAUSED") return false;
+        if (sc.state === "OPEN" && sc.previousState === "OPEN") return false;
+        return true;
+      });
       if (onChainChanges.length > 0) {
         logger.info("Pipeline", `Triggering settlement for ${onChainChanges.length} on-chain state change(s) (${stateChanges.length - onChainChanges.length} PAUSED skipped)`);
         await handleMarketOpenSettlement(onChainChanges);

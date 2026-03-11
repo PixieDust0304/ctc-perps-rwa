@@ -327,4 +327,4 @@ model KeeperEvent {
 | Front-running oracle | 300s min open time (market hours); 2s block time reduces MEV |
 | Pool drain by winning traders | Payout capped at custody balance; consider ADL for v2 |
 | Trader collateral inflating LP metrics | totalTraderCollateral tracked separately; fee rate uses LP-only liquidity |
-| DB-chain desync | 30-min reconciler verifies all open positions against chain state |
+| DB-chain desync | Periodic reconciler (max(blockTimeMs×4, 10s)) verifies all open positions against chain state |

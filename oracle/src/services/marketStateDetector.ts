@@ -14,6 +14,8 @@ interface FeedState {
   lastTransitionAt: number;
   /** Last schedule-driven state (for detecting schedule boundary changes) */
   lastScheduleWindow: "market_hours" | "off_hours";
+  /** What state the feed was in before entering PAUSED (for looking through PAUSED chains) */
+  stateBeforePause?: MarketState;
 }
 
 // Per-feed confirmed state + debounce tracking
@@ -133,6 +135,7 @@ export function detectMarketStateChanges(ticks: PriceTick[]): MarketStateUpdate[
         feedId: tick.feedId,
         state: desired,
         isOpen: desired === "OPEN",
+        previousState: undefined,
         timestamp: tick.timestamp,
         reason,
       });
@@ -168,6 +171,7 @@ export function detectMarketStateChanges(ticks: PriceTick[]): MarketStateUpdate[
     // Schedule transitions fire immediately (0 confirmations required)
     if (isScheduleTransition) {
       const prevState = state.state;
+      if (desired === "PAUSED") state.stateBeforePause = prevState;
       state.state = desired;
       state.pendingCount = 0;
       state.pendingState = desired;
@@ -177,6 +181,7 @@ export function detectMarketStateChanges(ticks: PriceTick[]): MarketStateUpdate[
         feedId: tick.feedId,
         state: desired,
         isOpen: desired === "OPEN",
+        previousState: prevState === "PAUSED" ? state.stateBeforePause : prevState,
         timestamp: tick.timestamp,
         reason,
       });
@@ -238,6 +243,7 @@ export function detectMarketStateChanges(ticks: PriceTick[]): MarketStateUpdate[
 
     // Transition confirmed!
     const prevState = state.state;
+    if (desired === "PAUSED") state.stateBeforePause = prevState;
     state.state = desired;
     state.pendingCount = 0;
     state.lastTransitionAt = now;
@@ -246,6 +252,7 @@ export function detectMarketStateChanges(ticks: PriceTick[]): MarketStateUpdate[
       feedId: tick.feedId,
       state: desired,
       isOpen: desired === "OPEN",
+      previousState: prevState === "PAUSED" ? state.stateBeforePause : prevState,
       timestamp: tick.timestamp,
       reason,
     });

@@ -225,13 +225,17 @@ contract P2PTrading is IP2PTrading, OwnableUpgradeable, UUPSUpgradeable, Pausabl
         require(msg.sender == settlementKeeper || msg.sender == owner(), "P2P: not keeper");
 
         uint16 feedId;
+        bool feedIdSet;
         uint256 settledCount;
 
         for (uint256 i = 0; i < positionIds.length; i++) {
             P2PPosition storage pos = positions[positionIds[i]];
             if (pos.collateral == 0 || pos.isSettled) continue;
 
-            if (i == 0) feedId = pos.feedId;
+            if (!feedIdSet) {
+                feedId = pos.feedId;
+                feedIdSet = true;
+            }
             require(pos.feedId == feedId, "P2P: mixed feeds");
 
             (uint256 pnl, bool isProfit) = _calculateP2PPnLAtPrice(pos, settlementPrice);

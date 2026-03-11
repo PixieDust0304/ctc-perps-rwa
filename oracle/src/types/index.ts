@@ -45,6 +45,8 @@ export interface MarketStateUpdate {
   state: MarketState;
   /** Backward-compatible: true only when state === "OPEN" */
   isOpen: boolean;
+  /** The effective state before this transition (looks through PAUSED to the real prior state) */
+  previousState?: MarketState;
   timestamp: number;
   reason?: string;
 }
